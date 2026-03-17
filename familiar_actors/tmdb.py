@@ -14,10 +14,12 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
 
 class TMDBClient:
     def __init__(self):
-        if not settings.tmdb_api_key:
-            raise RuntimeError("TMDB_API_KEY is not set. Add it to your .env file.")
+        if not settings.tmdb_read_access_token:
+            raise RuntimeError(
+                "TMDB_READ_ACCESS_TOKEN is not set. Add it to your .env file."
+            )
         self.headers = {
-            "Authorization": f"Bearer {settings.tmdb_api_key}",
+            "Authorization": f"Bearer {settings.tmdb_read_access_token}",
             "accept": "application/json",
         }
 
@@ -80,6 +82,8 @@ class TMDBClient:
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             for actor in actors:
+                if not actor.tmdb_image_url:
+                    continue
                 try:
                     response = await client.get(actor.tmdb_image_url)
                     response.raise_for_status()

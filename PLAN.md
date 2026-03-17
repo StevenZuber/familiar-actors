@@ -82,10 +82,10 @@ uv run familiar-actors serve              # Start FastAPI dev server
 
 ## TMDB Setup
 
-Register at <https://www.themoviedb.org/settings/api> for a free API key. Store in `.env`:
+Register at <https://www.themoviedb.org/settings/api> for a free Read Access Token. Store in `.env`:
 
 ```bash
-TMDB_API_KEY=your_key_here
+TMDB_READ_ACCESS_TOKEN=your_token_here
 ```
 
 ## Progress

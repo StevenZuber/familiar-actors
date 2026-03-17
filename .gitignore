@@ -81,7 +81,7 @@ profile_default/
 ipython_config.py
 
 # pyenv
-# .python-version
+.python-version
 
 # pipenv
 #Pipfile.lock
@@ -138,10 +138,11 @@ cython_debug/
 # PyCharm
 .idea/
 
+VS Code
+.vscode/
+
 # Mac Stuff
 .DS_Store
-
-.python-version
 
 # Project data (headshots, embeddings, SQLite DB)
 data/

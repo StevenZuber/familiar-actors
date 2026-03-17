@@ -9,7 +9,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    tmdb_api_key: str = ""
+    tmdb_read_access_token: str = ""
 
     data_dir: Path = Path("data")
     headshots_dir: Path = Path("data/headshots")

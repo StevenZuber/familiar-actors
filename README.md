@@ -19,9 +19,9 @@ Familiar Actors solves this. Type in an actor's name and get back a list of acto
 # Install dependencies
 uv sync
 
-# Get a free TMDB API key: https://www.themoviedb.org/settings/api
+# Get a free TMDB Read Access Token: https://www.themoviedb.org/settings/api
 # Add it to .env
-echo "TMDB_API_KEY=your_key_here" > .env
+echo "TMDB_READ_ACCESS_TOKEN=your_token_here" > .env
 ```
 
 ## Usage
