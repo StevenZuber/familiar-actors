@@ -11,9 +11,15 @@ Familiar Actors solves this. Type in an actor's name and get back a list of acto
 3. When you search for an actor, their embedding is compared against all others using cosine similarity
 4. The most similar faces are returned, ranked by score
 
-## Setup
+## Prerequisites
 
-**Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/)
+- **Python 3.12+**
+- **[uv](https://docs.astral.sh/uv/)** — Python package manager (`brew install uv` or see [install docs](https://docs.astral.sh/uv/getting-started/installation/))
+- **A free [TMDB](https://www.themoviedb.org/) account** — for the API token used to fetch actor data
+
+SQLite is included in Python's standard library. All other dependencies are installed automatically by `uv sync`.
+
+## Setup
 
 ```bash
 # Install dependencies
