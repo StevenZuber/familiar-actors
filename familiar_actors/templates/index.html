@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="search-section">
+    <div class="search-wrapper">
+        <input
+            type="text"
+            id="actor-search"
+            placeholder="Type an actor's name..."
+            autocomplete="off"
+        >
+        <div id="suggestions" class="suggestions"></div>
+    </div>
+</div>
+
+<div id="results"></div>
+
+<script>
+    const searchInput = document.getElementById('actor-search');
+    const suggestions = document.getElementById('suggestions');
+    let debounceTimer;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+
+        if (query.length < 2) {
+            suggestions.innerHTML = '';
+            suggestions.classList.remove('active');
+            return;
+        }
+
+        debounceTimer = setTimeout(async () => {
+            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+            const actors = await response.json();
+
+            if (actors.length === 0) {
+                suggestions.innerHTML = '<div class="suggestion-item no-results">No actors found</div>';
+                suggestions.classList.add('active');
+                return;
+            }
+
+            suggestions.innerHTML = actors.map(actor => `
+                <div class="suggestion-item"
+                     hx-get="/search?actor_id=${actor.id}"
+                     hx-target="#results"
+                     hx-swap="innerHTML">
+                    <img src="${actor.tmdb_image_url || ''}"
+                         alt="${actor.name}"
+                         class="suggestion-thumb"
+                         onerror="this.style.display='none'">
+                    <span>${actor.name}</span>
+                </div>
+            `).join('');
+
+            htmx.process(suggestions);
+            suggestions.classList.add('active');
+        }, 300);
+    });
+
+    // Close suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.search-wrapper')) {
+            suggestions.classList.remove('active');
+        }
+    });
+
+    // Close suggestions and update input when selecting
+    suggestions.addEventListener('click', function(e) {
+        const item = e.target.closest('.suggestion-item');
+        if (item && !item.classList.contains('no-results')) {
+            searchInput.value = item.querySelector('span').textContent;
+            suggestions.classList.remove('active');
+        }
+    });
+</script>
+{% endblock %}

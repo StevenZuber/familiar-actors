@@ -1,0 +1,27 @@
+{% if actor %}
+<div class="results-section">
+    <h2>Actors who look like {{ actor.name }}</h2>
+
+    {% if results %}
+    <div class="results-grid">
+        {% for result in results %}
+        <div class="actor-card">
+            <div class="actor-image">
+                {% if result.tmdb_image_url %}
+                <img src="{{ result.tmdb_image_url }}" alt="{{ result.name }}">
+                {% else %}
+                <div class="no-image">No photo</div>
+                {% endif %}
+            </div>
+            <div class="actor-info">
+                <h3>{{ result.name }}</h3>
+                <span class="similarity-score">{{ "%.1f"|format(result.similarity_score * 100) }}% match</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-results">No similar actors found. The embedding index may need to be built.</p>
+    {% endif %}
+</div>
+{% endif %}
