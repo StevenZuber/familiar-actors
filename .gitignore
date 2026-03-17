@@ -145,3 +145,5 @@ cython_debug/
 
 # Project data (headshots, embeddings, SQLite DB)
 data/
+
+.claude/
