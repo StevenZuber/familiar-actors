@@ -25,12 +25,12 @@ class SimilarityIndex:
         """Load all actor embeddings into memory."""
         actors = session.exec(
             select(Actor).where(
-                Actor.embedding_path.isnot(None)  # type: ignore[union-attr]
+                Actor.clip_embedding_path.isnot(None)  # type: ignore[union-attr]
             )
         ).all()
 
         if not actors:
-            logger.warning("No actors with embeddings found")
+            logger.warning("No actors with CLIP embeddings found")
             return
 
         ids = []
@@ -38,7 +38,7 @@ class SimilarityIndex:
 
         for actor in actors:
             try:
-                embedding = np.load(actor.embedding_path)
+                embedding = np.load(actor.clip_embedding_path)
                 ids.append(actor.id)
                 vecs.append(embedding)
             except (FileNotFoundError, ValueError) as e:

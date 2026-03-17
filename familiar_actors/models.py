@@ -7,6 +7,7 @@ class Actor(SQLModel, table=True):
     name: str = Field(index=True)
     image_path: str | None = None
     embedding_path: str | None = None
+    clip_embedding_path: str | None = None
     tmdb_image_url: str | None = None
 
 

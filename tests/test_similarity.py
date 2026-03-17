@@ -36,7 +36,7 @@ def actors_with_embeddings(db_session, tmp_path):
         actor = Actor(
             tmdb_id=i,
             name=name,
-            embedding_path=str(emb_path),
+            clip_embedding_path=str(emb_path),
         )
         db_session.add(actor)
 

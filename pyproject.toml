@@ -12,12 +12,11 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "jinja2>=3.1.0",
     "httpx>=0.27.0",
-    "deepface>=0.0.93",
+    "open-clip-torch>=2.26.0",
     "numpy>=1.26.0",
     "sqlmodel>=0.0.22",
     "pydantic-settings>=2.2.0",
     "pillow>=10.0.0",
-    "tf-keras>=2.20.1",
 ]
 
 [dependency-groups]

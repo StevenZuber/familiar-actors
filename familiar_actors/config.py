@@ -13,10 +13,11 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
     headshots_dir: Path = Path("data/headshots")
-    embeddings_dir: Path = Path("data/embeddings")
+    embeddings_dir: Path = Path("data/embeddings_clip")
     db_path: Path = Path("data/familiar_actors.db")
 
-    embedding_model: str = "ArcFace"
+    embedding_model: str = "ViT-B-32"
+    clip_pretrained: str = "openai"
     similarity_top_n: int = 10
 
     @property
