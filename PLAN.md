@@ -6,7 +6,7 @@ A web app where you type an actor's name and get back a list of similar-looking 
 
 ## Approach
 
-Use face embeddings (vector representations of facial features via deepface/ArcFace) to numerically compare actor headshots sourced from TMDB, then rank by cosine similarity.
+Use CLIP embeddings (holistic visual similarity via OpenCLIP ViT-B-32) to numerically compare actor headshots sourced from TMDB, then rank by cosine similarity.
 
 ## Architecture
 
@@ -38,11 +38,10 @@ Use face embeddings (vector representations of facial features via deepface/ArcF
 | `fastapi` + `uvicorn` | API framework + server |
 | `jinja2` + HTMX (CDN) | Server-rendered templates with async interactivity |
 | `httpx` | Async HTTP client (TMDB API) |
-| `deepface` | Face embedding generation (ArcFace model) |
+| `open-clip-torch` | Visual similarity embeddings (ViT-B-32) |
 | `numpy` | Embedding storage and cosine similarity |
 | `sqlmodel` | Actor metadata in SQLite |
 | `pydantic-settings` | Configuration (.env for API keys) |
-| `tf-keras` | Required by deepface's TensorFlow backend |
 
 ## File Structure
 
@@ -50,12 +49,12 @@ Use face embeddings (vector representations of facial features via deepface/ArcF
 familiar_actors/
     __init__.py
     app.py              # FastAPI app, lifespan, route registration
-    cli.py              # CLI: fetch, embed, build, serve
+    cli.py              # CLI: fetch, fetch-credits, embed, build, serve
     config.py           # Pydantic Settings (TMDB key, data paths, model config)
     models.py           # SQLModel Actor + Pydantic ActorResult
     database.py         # SQLite engine/session setup
     tmdb.py             # Async TMDB client (fetch actors, download images)
-    embeddings.py       # deepface ArcFace embedding generation
+    embeddings.py       # OpenCLIP embedding generation
     similarity.py       # In-memory cosine similarity index
     routes/
         search.py       # JSON API + HTMX search endpoints
@@ -74,10 +73,11 @@ tests/
 ## CLI Commands
 
 ```bash
-uv run familiar-actors fetch [num_pages]  # Fetch actors + headshots from TMDB
-uv run familiar-actors embed              # Generate face embeddings
-uv run familiar-actors build [num_pages]  # fetch + embed in one shot
-uv run familiar-actors serve              # Start FastAPI dev server
+uv run familiar-actors fetch [num_pages]              # Fetch popular actors + headshots
+uv run familiar-actors fetch-credits [num_pages] [tv]  # Crawl cast from top-rated movies/TV
+uv run familiar-actors embed                           # Generate CLIP embeddings
+uv run familiar-actors build [num_pages]               # fetch + embed in one shot
+uv run familiar-actors serve                           # Start FastAPI dev server
 ```
 
 ## TMDB Setup
@@ -98,16 +98,24 @@ TMDB_READ_ACCESS_TOKEN=your_token_here
 - [x] Phase 6: Web UI (Jinja2 + HTMX)
 - [x] Phase 7: CLI for data pipeline
 - [x] Unit tests (13 passing — models + similarity)
-- [ ] TMDB API key setup + integration test
-- [ ] First real `build` run to populate the dataset
-- [ ] End-to-end verification (search UI with real data)
+- [x] TMDB API key setup
+- [x] First `build` run (~8k actors from popular endpoint)
+- [x] Swap ArcFace → CLIP (dramatically better similarity results)
+- [x] `fetch-credits` command to crawl movie/TV cast lists
+- [ ] Scale dataset via credits crawling (target: 50k+ actors)
+- [ ] End-to-end verification with large dataset
 
 ## Scaling Path
 
-Start with ~500 actors (25 pages from TMDB popular endpoint). To scale:
+**Data sources (in order of ROI):**
 
-- `fetch` with more pages → more actors
-- `embed` processes only new headshots (skips existing)
+- `fetch` — popular actors endpoint (caps at ~10k)
+- `fetch-credits` — cast from top-rated movies (10-25k new actors per 25 pages)
+- `fetch-credits ... tv` — cast from top-rated TV shows
+- Future: crawl by genre, decade, or discover endpoint for broader coverage
+
+**Search performance:**
+
 - numpy cosine similarity handles 10-50k actors fine in memory
 - Beyond that: swap `similarity.py` internals to FAISS (same interface, faster search)
 

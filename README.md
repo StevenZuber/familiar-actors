@@ -7,7 +7,7 @@ Familiar Actors solves this. Type in an actor's name and get back a list of acto
 ## How it works
 
 1. Actor headshots are sourced from [TMDB](https://www.themoviedb.org/)
-2. Each headshot is processed through [deepface](https://github.com/serengil/deepface) (ArcFace model) to generate a face embedding — a numerical vector representing facial features
+2. Each headshot is processed through [OpenCLIP](https://github.com/mlfoundations/open_clip) (ViT-B-32) to generate an embedding — a numerical vector representing visual features
 3. When you search for an actor, their embedding is compared against all others using cosine similarity
 4. The most similar faces are returned, ranked by score
 
@@ -33,9 +33,12 @@ echo "TMDB_READ_ACCESS_TOKEN=your_token_here" > .env
 uv run familiar-actors build
 
 # Or run steps individually:
-uv run familiar-actors fetch        # Fetch actors + download headshots (default: 25 pages / ~500 actors)
-uv run familiar-actors fetch 50     # Fetch more pages for a larger dataset
-uv run familiar-actors embed        # Generate face embeddings for downloaded headshots
+uv run familiar-actors fetch              # Fetch popular actors + headshots (default: 25 pages)
+uv run familiar-actors fetch 50           # Fetch more pages for a larger dataset
+uv run familiar-actors fetch-credits      # Crawl cast from top-rated movies (25 pages)
+uv run familiar-actors fetch-credits 50   # More pages of movies
+uv run familiar-actors fetch-credits 25 tv  # Crawl TV show credits instead
+uv run familiar-actors embed              # Generate CLIP embeddings for headshots
 ```
 
 ### Start the app
@@ -49,7 +52,7 @@ Open <http://127.0.0.1:8000> and start searching.
 ## Tech stack
 
 - **FastAPI** + **Jinja2** + **HTMX** — backend and server-rendered UI
-- **deepface** (ArcFace) — face embedding generation
+- **OpenCLIP** (ViT-B-32) — visual similarity embeddings
 - **SQLModel** / SQLite — actor metadata
 - **numpy** — embedding storage and cosine similarity search
 - **httpx** — async TMDB API client

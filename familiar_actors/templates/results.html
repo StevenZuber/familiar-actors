@@ -5,7 +5,7 @@
     {% if results %}
     <div class="results-grid">
         {% for result in results %}
-        <div class="actor-card">
+        <a class="actor-card" href="https://www.themoviedb.org/person/{{ result.tmdb_id }}" target="_blank" rel="noopener">
             <div class="actor-image">
                 {% if result.tmdb_image_url %}
                 <img src="{{ result.tmdb_image_url }}" alt="{{ result.name }}">
@@ -17,7 +17,7 @@
                 <h3>{{ result.name }}</h3>
                 <span class="similarity-score">{{ "%.1f"|format(result.similarity_score * 100) }}% match</span>
             </div>
-        </div>
+        </a>
         {% endfor %}
     </div>
     {% else %}

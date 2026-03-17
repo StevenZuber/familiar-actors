@@ -45,6 +45,28 @@ def embed():
         logger.info(f"Processed {processed} embeddings")
 
 
+def fetch_credits(num_pages: int = 25, source: str = "movie"):
+    """Fetch actors from movie/TV credits and download their headshots."""
+    create_db_and_tables()
+    settings.headshots_dir.mkdir(parents=True, exist_ok=True)
+
+    client = TMDBClient()
+    source_label = "TV shows" if source == "tv" else "movies"
+
+    with Session(engine) as session:
+        logger.info(
+            f"Crawling credits from {num_pages} pages of top-rated {source_label}..."
+        )
+        new_actors = asyncio.run(
+            client.fetch_actors_from_credits(session, num_pages, source)
+        )
+        logger.info(f"Found {len(new_actors)} new actors")
+
+        logger.info("Downloading headshots...")
+        downloaded = asyncio.run(client.download_headshots(session))
+        logger.info(f"Downloaded {downloaded} new headshots")
+
+
 def build(num_pages: int = 25):
     """Run the full pipeline: fetch actors, download headshots, generate embeddings."""
     fetch(num_pages)
@@ -62,6 +84,7 @@ def serve(host: str = "127.0.0.1", port: int = 8000):
 def main():
     commands = {
         "fetch": fetch,
+        "fetch-credits": fetch_credits,
         "embed": embed,
         "build": build,
         "serve": serve,
@@ -71,23 +94,35 @@ def main():
         print(f"Usage: familiar-actors <{'|'.join(commands)}>")
         print()
         print("Commands:")
-        print("  fetch [num_pages]  Fetch actors and headshots from TMDB")
-        print("  embed              Generate face embeddings for headshots")
-        print("  build [num_pages]  Run full pipeline (fetch + embed)")
-        print("  serve              Start the web server")
+        print(
+            "  fetch [num_pages]         Fetch popular actors and headshots from TMDB"
+        )
+        print(
+            "  fetch-credits [num_pages] [tv]  Crawl cast from top-rated movies (or TV)"
+        )
+        print("  embed                     Generate CLIP embeddings for headshots")
+        print("  build [num_pages]         Run full pipeline (fetch + embed)")
+        print("  serve                     Start the web server")
         sys.exit(1)
 
     command = sys.argv[1]
     args = sys.argv[2:]
 
-    fn = commands[command]
-    if args and command in ("fetch", "build"):
-        fn(num_pages=int(args[0]))
+    if command == "fetch-credits":
+        num_pages = 25
+        source = "movie"
+        for arg in args:
+            if arg == "tv":
+                source = "tv"
+            else:
+                num_pages = int(arg)
+        fetch_credits(num_pages=num_pages, source=source)
+    elif args and command in ("fetch", "build"):
+        commands[command](num_pages=int(args[0]))
     elif args and command == "serve":
-        # Allow serve host:port
-        fn(*args)
+        commands[command](*args)
     else:
-        fn()
+        commands[command]()
 
 
 if __name__ == "__main__":

@@ -130,14 +130,17 @@ header h1 {
     gap: 1rem;
 }
 
-.actor-card {
+a.actor-card {
+    display: block;
     background: #1a1a1a;
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.15s;
+    text-decoration: none;
+    color: inherit;
 }
 
-.actor-card:hover {
+a.actor-card:hover {
     transform: translateY(-2px);
 }
 
@@ -197,4 +200,18 @@ footer .tmdb-logo {
 footer p {
     font-size: 0.75rem;
     color: #555;
+}
+
+.footer-links {
+    margin-top: 0.5rem;
+}
+
+.footer-links a {
+    color: #666;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.footer-links a:hover {
+    color: #999;
 }

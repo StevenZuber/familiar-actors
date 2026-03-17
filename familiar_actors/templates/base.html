@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Familiar Actors</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
@@ -11,7 +12,7 @@
     <div class="container">
         <header>
             <h1>Familiar Actors</h1>
-            <p class="subtitle">Find actors who look like other actors</p>
+            <p class="subtitle">"I know that face..." — find out who you're thinking of</p>
         </header>
         <main>
             {% block content %}{% endblock %}
@@ -23,6 +24,9 @@
                      class="tmdb-logo">
             </a>
             <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+            <p class="footer-links">
+                <a href="https://github.com/StevenZuber/familiar-actors" target="_blank" rel="noopener">GitHub</a>
+            </p>
         </footer>
     </div>
 </body>

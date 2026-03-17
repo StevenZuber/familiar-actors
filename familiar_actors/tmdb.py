@@ -23,6 +23,27 @@ class TMDBClient:
             "accept": "application/json",
         }
 
+    def _upsert_actor(self, session: Session, person: dict) -> Actor | None:
+        """Insert an actor if they don't already exist. Returns the Actor or None if skipped."""
+        if not person.get("profile_path"):
+            return None
+
+        existing = session.exec(
+            select(Actor).where(Actor.tmdb_id == person["id"])
+        ).first()
+        if existing:
+            return existing
+
+        actor = Actor(
+            tmdb_id=person["id"],
+            name=person["name"],
+            tmdb_image_url=f"{TMDB_IMAGE_BASE_URL}{person['profile_path']}",
+        )
+        session.add(actor)
+        session.commit()
+        session.refresh(actor)
+        return actor
+
     async def fetch_popular_actors(
         self, session: Session, num_pages: int = 25
     ) -> list[Actor]:
@@ -39,30 +60,50 @@ class TMDBClient:
                 data = response.json()
 
                 for person in data["results"]:
-                    if not person.get("profile_path"):
-                        continue
-
-                    # Skip if we already have this actor
-                    existing = session.exec(
-                        select(Actor).where(Actor.tmdb_id == person["id"])
-                    ).first()
-                    if existing:
-                        actors.append(existing)
-                        continue
-
-                    actor = Actor(
-                        tmdb_id=person["id"],
-                        name=person["name"],
-                        tmdb_image_url=f"{TMDB_IMAGE_BASE_URL}{person['profile_path']}",
-                    )
-                    session.add(actor)
-                    session.commit()
-                    session.refresh(actor)
-                    actors.append(actor)
+                    actor = self._upsert_actor(session, person)
+                    if actor:
+                        actors.append(actor)
 
                 logger.info(f"Fetched page {page}/{num_pages} ({len(actors)} actors)")
 
         return actors
+
+    async def fetch_actors_from_credits(
+        self, session: Session, num_pages: int = 25, source: str = "movie"
+    ) -> list[Actor]:
+        """Fetch actors by crawling cast lists from top-rated movies or TV shows."""
+        new_actors: list[Actor] = []
+
+        async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
+            for page in range(1, num_pages + 1):
+                response = await client.get(
+                    f"{TMDB_BASE_URL}/{source}/top_rated",
+                    params={"page": page},
+                )
+                response.raise_for_status()
+                titles = response.json()["results"]
+
+                for title in titles:
+                    title_name = title.get("title") or title.get("name", "Unknown")
+                    title_id = title["id"]
+
+                    credits_response = await client.get(
+                        f"{TMDB_BASE_URL}/{source}/{title_id}/credits",
+                    )
+                    credits_response.raise_for_status()
+                    cast = credits_response.json().get("cast", [])
+
+                    for person in cast:
+                        actor = self._upsert_actor(session, person)
+                        if actor and actor.image_path is None:
+                            new_actors.append(actor)
+
+                    logger.info(
+                        f"Page {page}/{num_pages} — {title_name}: "
+                        f"{len(cast)} cast, {len(new_actors)} new actors total"
+                    )
+
+        return new_actors
 
     async def download_headshots(self, session: Session) -> int:
         """Download headshots for all actors that don't have one yet."""
