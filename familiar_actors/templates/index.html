@@ -2,6 +2,10 @@
 
 {% block content %}
 <div class="search-section">
+    <div class="search-tabs">
+        <button class="search-tab active" data-mode="actor">Actor</button>
+        <button class="search-tab" data-mode="title">Movie / Show</button>
+    </div>
     <div class="search-wrapper">
         <input
             type="text"
@@ -18,7 +22,26 @@
 <script>
     const searchInput = document.getElementById('actor-search');
     const suggestions = document.getElementById('suggestions');
+    const tabs = document.querySelectorAll('.search-tab');
     let debounceTimer;
+    let searchMode = 'actor';
+
+    // Tab switching
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            tabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            searchMode = this.dataset.mode;
+            searchInput.value = '';
+            suggestions.innerHTML = '';
+            suggestions.classList.remove('active');
+            document.getElementById('results').innerHTML = '';
+            searchInput.placeholder = searchMode === 'actor'
+                ? 'Search for an actor...'
+                : 'Search for a movie or show...';
+            searchInput.focus();
+        });
+    });
 
     searchInput.addEventListener('input', function() {
         clearTimeout(debounceTimer);
@@ -31,27 +54,44 @@
         }
 
         debounceTimer = setTimeout(async () => {
-            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-            const actors = await response.json();
+            const endpoint = searchMode === 'actor'
+                ? `/api/search?q=${encodeURIComponent(query)}`
+                : `/api/search-titles?q=${encodeURIComponent(query)}`;
+            const response = await fetch(endpoint);
+            const results = await response.json();
 
-            if (actors.length === 0) {
-                suggestions.innerHTML = '<div class="suggestion-item no-results">No actors found</div>';
+            if (results.length === 0) {
+                const noResultsText = searchMode === 'actor'
+                    ? 'No actors found'
+                    : 'No movies or shows found';
+                suggestions.innerHTML = `<div class="suggestion-item no-results">${noResultsText}</div>`;
                 suggestions.classList.add('active');
                 return;
             }
 
-            suggestions.innerHTML = actors.map(actor => `
-                <div class="suggestion-item"
-                     hx-get="/search?actor_id=${actor.id}"
-                     hx-target="#results"
-                     hx-swap="innerHTML">
-                    <img src="${actor.tmdb_image_url || ''}"
-                         alt="${actor.name}"
-                         class="suggestion-thumb"
-                         onerror="this.style.display='none'">
-                    <span>${actor.name}</span>
-                </div>
-            `).join('');
+            if (searchMode === 'actor') {
+                suggestions.innerHTML = results.map(actor => `
+                    <div class="suggestion-item"
+                         hx-get="/search?actor_id=${actor.id}"
+                         hx-target="#results"
+                         hx-swap="innerHTML">
+                        <img src="${actor.tmdb_image_url || ''}"
+                             alt="${actor.name}"
+                             class="suggestion-thumb"
+                             onerror="this.style.display='none'">
+                        <span>${actor.name}</span>
+                    </div>
+                `).join('');
+            } else {
+                suggestions.innerHTML = results.map(title => `
+                    <div class="suggestion-item"
+                         hx-get="/cast?title_id=${title.tmdb_id}&source=${title.source}"
+                         hx-target="#results"
+                         hx-swap="innerHTML">
+                        <span>${title.title}${title.year ? ` (${title.year})` : ''}</span>
+                    </div>
+                `).join('');
+            }
 
             htmx.process(suggestions);
             suggestions.classList.add('active');

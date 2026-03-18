@@ -1,0 +1,39 @@
+{% if title_name %}
+<div class="results-section">
+    <h2>Cast of {{ title_name }}</h2>
+
+    {% if cast %}
+    <div class="results-grid">
+        {% for member in cast %}
+        <div class="actor-card{% if member.in_database %} in-db{% endif %}"
+             {% if member.actor_id %}
+             hx-get="/search?actor_id={{ member.actor_id }}"
+             hx-target="#results"
+             hx-swap="innerHTML"
+             hx-on::before-request="document.getElementById('actor-search').value = '{{ member.name }}'; document.querySelectorAll('.search-tab').forEach(t => { t.classList.toggle('active', t.dataset.mode === 'actor'); }); searchMode = 'actor';"
+             {% endif %}>
+            <div class="actor-image">
+                {% if member.image_url %}
+                <img src="{{ member.image_url }}" alt="{{ member.name }}">
+                {% else %}
+                <div class="no-image">No photo</div>
+                {% endif %}
+                <a class="tmdb-link"
+                   href="https://www.themoviedb.org/person/{{ member.tmdb_id }}"
+                   target="_blank"
+                   rel="noopener"
+                   title="View on TMDB"
+                   onclick="event.stopPropagation()">&#8599;</a>
+            </div>
+            <div class="actor-info">
+                <h3>{{ member.name }}</h3>
+                <span class="character-name">{{ member.character }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-results">No cast information found.</p>
+    {% endif %}
+</div>
+{% endif %}

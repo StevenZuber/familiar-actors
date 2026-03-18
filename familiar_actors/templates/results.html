@@ -1,23 +1,40 @@
 {% if actor %}
 <div class="results-section">
-    <h2>Actors who look like {{ actor.name }}</h2>
+    <div class="query-actor">
+        {% if actor.tmdb_image_url %}
+        <img src="{{ actor.tmdb_image_url }}" alt="{{ actor.name }}" class="query-actor-img">
+        {% endif %}
+        <div>
+            <h2>Actors who look like {{ actor.name }}</h2>
+        </div>
+    </div>
 
     {% if results %}
     <div class="results-grid">
         {% for result in results %}
-        <a class="actor-card" href="https://www.themoviedb.org/person/{{ result.tmdb_id }}" target="_blank" rel="noopener">
+        <div class="actor-card"
+             hx-get="/search?actor_id={{ result.id }}"
+             hx-target="#results"
+             hx-swap="innerHTML"
+             hx-on::before-request="document.getElementById('actor-search').value = '{{ result.name }}'">
             <div class="actor-image">
                 {% if result.tmdb_image_url %}
                 <img src="{{ result.tmdb_image_url }}" alt="{{ result.name }}">
                 {% else %}
                 <div class="no-image">No photo</div>
                 {% endif %}
+                <a class="tmdb-link"
+                   href="https://www.themoviedb.org/person/{{ result.tmdb_id }}"
+                   target="_blank"
+                   rel="noopener"
+                   title="View on TMDB"
+                   onclick="event.stopPropagation()">&#8599;</a>
             </div>
             <div class="actor-info">
                 <h3>{{ result.name }}</h3>
                 <span class="similarity-score">{{ "%.1f"|format(result.similarity_score * 100) }}% match</span>
             </div>
-        </a>
+        </div>
         {% endfor %}
     </div>
     {% else %}
