@@ -129,11 +129,15 @@ class TMDBClient:
                             "title": title,
                             "year": year,
                             "source": source,
+                            "popularity": item.get("popularity", 0),
                         }
                     )
 
-        # Sort by popularity (TMDB returns results pre-sorted, but we merged two lists)
-        return results[:limit]
+        results.sort(key=lambda x: x["popularity"], reverse=True)
+        # Drop popularity before returning — frontend doesn't need it
+        return [
+            {k: v for k, v in r.items() if k != "popularity"} for r in results[:limit]
+        ]
 
     async def fetch_cast(
         self, title_id: int, source: str = "movie"
