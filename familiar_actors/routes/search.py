@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 
 from familiar_actors.database import get_session
 from familiar_actors.models import Actor, ActorResult
+from familiar_actors.tmdb import TMDBClient
 
 router = APIRouter()
 
@@ -17,6 +18,10 @@ def get_templates():
     from familiar_actors.app import templates
 
     return templates
+
+
+def get_tmdb_client():
+    return TMDBClient()
 
 
 @router.get("/")
@@ -76,5 +81,52 @@ async def search_page(
             "request": request,
             "actor": actor,
             "results": results,
+        },
+    )
+
+
+@router.get("/api/search-titles")
+async def search_titles(
+    q: str = Query(min_length=1),
+) -> list[dict]:
+    """Search movies and TV shows by title via TMDB."""
+    client = get_tmdb_client()
+    return await client.search_titles(q)
+
+
+@router.get("/cast")
+async def cast_page(
+    request: Request,
+    title_id: int = Query(...),
+    source: str = Query("movie"),
+    session: Session = Depends(get_session),
+):
+    """HTMX endpoint — show cast for a movie/show."""
+    tmpl = get_templates()
+    client = get_tmdb_client()
+
+    title_name, cast = await client.fetch_cast(title_id, source)
+
+    # Check which cast members are already in our database
+    cast_with_db_info = []
+    for member in cast:
+        actor = session.exec(
+            select(Actor).where(Actor.tmdb_id == member["tmdb_id"])
+        ).first()
+        cast_with_db_info.append(
+            {
+                **member,
+                "actor_id": actor.id if actor else None,
+                "in_database": actor is not None
+                and actor.clip_embedding_path is not None,
+            }
+        )
+
+    return tmpl.TemplateResponse(
+        "cast.html",
+        {
+            "request": request,
+            "title_name": title_name,
+            "cast": cast_with_db_info,
         },
     )

@@ -105,6 +105,72 @@ class TMDBClient:
 
         return new_actors
 
+    async def search_titles(self, query: str, limit: int = 10) -> list[dict]:
+        """Search for movies and TV shows by title."""
+        results = []
+
+        async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
+            for source in ("movie", "tv"):
+                response = await client.get(
+                    f"{TMDB_BASE_URL}/search/{source}",
+                    params={"query": query, "page": 1},
+                )
+                response.raise_for_status()
+
+                for item in response.json().get("results", []):
+                    title = item.get("title") or item.get("name", "")
+                    year = (
+                        item.get("release_date", "")[:4]
+                        or item.get("first_air_date", "")[:4]
+                    )
+                    results.append(
+                        {
+                            "tmdb_id": item["id"],
+                            "title": title,
+                            "year": year,
+                            "source": source,
+                        }
+                    )
+
+        # Sort by popularity (TMDB returns results pre-sorted, but we merged two lists)
+        return results[:limit]
+
+    async def fetch_cast(
+        self, title_id: int, source: str = "movie"
+    ) -> tuple[str, list[dict]]:
+        """Fetch the cast for a movie or TV show. Returns (title_name, cast_list)."""
+        async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
+            # Get the title name
+            detail_response = await client.get(
+                f"{TMDB_BASE_URL}/{source}/{title_id}",
+            )
+            detail_response.raise_for_status()
+            detail = detail_response.json()
+            title_name = detail.get("title") or detail.get("name", "Unknown")
+
+            # Get the cast
+            credits_response = await client.get(
+                f"{TMDB_BASE_URL}/{source}/{title_id}/credits",
+            )
+            credits_response.raise_for_status()
+            raw_cast = credits_response.json().get("cast", [])
+
+        cast = []
+        for person in raw_cast:
+            image_url = None
+            if person.get("profile_path"):
+                image_url = f"{TMDB_IMAGE_BASE_URL}{person['profile_path']}"
+            cast.append(
+                {
+                    "tmdb_id": person["id"],
+                    "name": person.get("name", "Unknown"),
+                    "character": person.get("character", ""),
+                    "image_url": image_url,
+                }
+            )
+
+        return title_name, cast
+
     async def download_headshots(self, session: Session) -> int:
         """Download headshots for all actors that don't have one yet."""
         actors = session.exec(

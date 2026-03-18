@@ -33,6 +33,36 @@ header h1 {
     font-size: 1rem;
 }
 
+/* Search tabs */
+.search-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.search-tab {
+    padding: 0.4rem 1rem;
+    background: transparent;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #777;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.search-tab:hover {
+    color: #bbb;
+    border-color: #555;
+}
+
+.search-tab.active {
+    color: #fff;
+    border-color: #666;
+    background: #1a1a1a;
+}
+
 /* Search */
 .search-section {
     margin-bottom: 2rem;
@@ -118,9 +148,22 @@ header h1 {
     margin-top: 1rem;
 }
 
+.query-actor {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.query-actor-img {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .results-section h2 {
     font-size: 1.25rem;
-    margin-bottom: 1rem;
     color: #fff;
 }
 
@@ -130,18 +173,20 @@ header h1 {
     gap: 1rem;
 }
 
-a.actor-card {
-    display: block;
+.actor-card {
     background: #1a1a1a;
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.15s;
-    text-decoration: none;
-    color: inherit;
+    cursor: pointer;
 }
 
-a.actor-card:hover {
+.actor-card:hover {
     transform: translateY(-2px);
+}
+
+.actor-image {
+    position: relative;
 }
 
 .actor-image img {
@@ -162,6 +207,33 @@ a.actor-card:hover {
     font-size: 0.85rem;
 }
 
+.tmdb-link {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    text-decoration: none;
+    font-size: 0.8rem;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.actor-card:hover .tmdb-link {
+    opacity: 1;
+}
+
+.tmdb-link:hover {
+    color: #fff;
+    background: rgba(0, 0, 0, 0.9);
+}
+
 .actor-info {
     padding: 0.75rem;
 }
@@ -175,6 +247,21 @@ a.actor-card:hover {
 .similarity-score {
     font-size: 0.8rem;
     color: #888;
+}
+
+.character-name {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+}
+
+.actor-card:not([hx-get]) {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.actor-card:not([hx-get]):hover {
+    transform: none;
 }
 
 p.no-results {
@@ -202,16 +289,17 @@ footer p {
     color: #555;
 }
 
-.footer-links {
-    margin-top: 0.5rem;
+.github-link {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
 }
 
-.footer-links a {
-    color: #666;
+.github-link a {
+    color: #777;
     text-decoration: none;
     transition: color 0.15s;
 }
 
-.footer-links a:hover {
-    color: #999;
+.github-link a:hover {
+    color: #bbb;
 }

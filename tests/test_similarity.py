@@ -44,31 +44,35 @@ def actors_with_embeddings(db_session, tmp_path):
     for a in db_session.query(Actor).all():
         actors.append(a)
 
-    return actors
+    return db_session, actors
 
 
 @pytest.mark.unit
 class TestSimilarityIndex:
-    def test_load_populates_index(self, db_session, actors_with_embeddings):
+    def test_load_populates_index(self, actors_with_embeddings):
+        session, _ = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
         assert index.is_loaded
         assert len(index.actor_ids) == 3
 
-    def test_load_normalizes_embeddings(self, db_session, actors_with_embeddings):
+    def test_load_normalizes_embeddings(self, actors_with_embeddings):
+        session, _ = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
+        assert index.embeddings is not None
         norms = np.linalg.norm(index.embeddings, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-6)
 
-    def test_search_returns_most_similar(self, db_session, actors_with_embeddings):
+    def test_search_returns_most_similar(self, actors_with_embeddings):
+        session, actors = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
-        actor_a = actors_with_embeddings[0]
-        results = index.search(actor_a.id, db_session, top_n=2)
+        actor_a = actors[0]
+        results = index.search(actor_a.id, session, top_n=2)
 
         assert len(results) == 2
         # Actor B should be the top match for Actor A
@@ -78,32 +82,33 @@ class TestSimilarityIndex:
         # B should have a higher similarity score than C
         assert results[0].similarity_score > results[1].similarity_score
 
-    def test_search_excludes_self(self, db_session, actors_with_embeddings):
+    def test_search_excludes_self(self, actors_with_embeddings):
+        session, actors = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
-        actor_a = actors_with_embeddings[0]
-        results = index.search(actor_a.id, db_session, top_n=10)
+        actor_a = actors[0]
+        results = index.search(actor_a.id, session, top_n=10)
 
         result_ids = [r.id for r in results]
         assert actor_a.id not in result_ids
 
-    def test_search_respects_top_n(self, db_session, actors_with_embeddings):
+    def test_search_respects_top_n(self, actors_with_embeddings):
+        session, actors = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
-        actor_a = actors_with_embeddings[0]
-        results = index.search(actor_a.id, db_session, top_n=1)
+        actor_a = actors[0]
+        results = index.search(actor_a.id, session, top_n=1)
 
         assert len(results) == 1
 
-    def test_search_unknown_actor_returns_empty(
-        self, db_session, actors_with_embeddings
-    ):
+    def test_search_unknown_actor_returns_empty(self, actors_with_embeddings):
+        session, _ = actors_with_embeddings
         index = SimilarityIndex()
-        index.load(db_session)
+        index.load(session)
 
-        results = index.search(9999, db_session)
+        results = index.search(9999, session)
         assert results == []
 
     def test_search_on_empty_index_returns_empty(self, db_session):
