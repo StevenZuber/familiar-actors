@@ -28,8 +28,27 @@ def _download_data_if_needed():
     """
     if not settings.data_release_url:
         return
-    if settings.embeddings_dir.exists() or settings.embeddings_avg_dir.exists():
+
+    # Check if embeddings actually exist (not just empty dirs from a failed extraction)
+    has_embeddings = (
+        any(settings.embeddings_dir.glob("*.npy"))
+        if settings.embeddings_dir.exists()
+        else False
+    )
+    has_avg_embeddings = (
+        any(settings.embeddings_avg_dir.glob("*.npy"))
+        if settings.embeddings_avg_dir.exists()
+        else False
+    )
+    if has_embeddings or has_avg_embeddings:
         return
+
+    # Clean up any partial extraction before re-downloading
+    import shutil
+
+    for d in [settings.embeddings_dir, settings.embeddings_avg_dir]:
+        if d.exists():
+            shutil.rmtree(d)
 
     logger.info("Data directory is empty — downloading dataset from GitHub Release...")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
