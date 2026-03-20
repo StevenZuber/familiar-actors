@@ -27,11 +27,24 @@
             </div>
             <div class="actor-info">
                 <h3>{{ member.name }}</h3>
-                <span class="character-name">{{ member.character }}</span>
+                <span class="character-name">
+                    {{ member.character }}{% if member.episode_count %} &middot; {{ member.episode_count }} episodes{% endif %}
+                </span>
             </div>
         </div>
         {% endfor %}
     </div>
+
+    {% if has_more %}
+    <div class="show-more">
+        <button hx-get="/cast?title_id={{ title_id }}&source={{ source }}&show_all=true"
+                hx-target="#results"
+                hx-swap="innerHTML">
+            Show {{ remaining_count }} more cast members
+        </button>
+    </div>
+    {% endif %}
+
     {% else %}
     <p class="no-results">No cast information found.</p>
     {% endif %}

@@ -264,6 +264,27 @@ header h1 {
     transform: none;
 }
 
+.show-more {
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+.show-more button {
+    padding: 0.5rem 1.5rem;
+    background: transparent;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #999;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.show-more button:hover {
+    color: #fff;
+    border-color: #666;
+}
+
 p.no-results {
     color: #666;
     text-align: center;

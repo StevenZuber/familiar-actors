@@ -121,6 +121,7 @@ SELECT COUNT(*) FROM actor WHERE image_path IS NOT NULL AND clip_embedding_path 
 
 - Search by photo upload — this is the killer feature. Skip the name entirely, upload a screenshot from whatever you're watching, and find similar actors directly. CLIP makes this almost free since it already embeds images — you'd just embed the uploaded photo and search the same index.
 - "No good matches?" button — you mentioned this earlier. Could trigger a targeted crawl of movies the searched actor appeared in, expanding the pool in the exact direction that matters.
+- When searching by movie or tv show, have a button to load more of the cast beyond the default 10.
 
 ### Data quality
 
