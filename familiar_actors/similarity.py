@@ -38,9 +38,8 @@ class SimilarityIndex:
         index_path = settings.data_dir / "embeddings_index.npy"
         ids_path = settings.data_dir / "embeddings_ids.json"
 
-        # Try individual .npy files first (always correct for the current DB),
-        # fall back to consolidated index (used on Railway where individual files
-        # aren't deployed)
+        # Try individual .npy files first (local dev), fall back to
+        # consolidated index (Railway where individual files aren't deployed)
         self._load_individual(session)
         if not self.is_loaded and index_path.exists() and ids_path.exists():
             self._load_consolidated(index_path, ids_path)
