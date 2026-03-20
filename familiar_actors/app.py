@@ -20,34 +20,23 @@ index = SimilarityIndex()
 
 
 def _download_data_if_needed():
-    """Download and extract the dataset from a GitHub Release if the data directory is empty.
+    """Download and extract the consolidated dataset from a GitHub Release.
 
-    Only runs when DATA_RELEASE_URL is set (i.e., on Railway) and the database
-    doesn't exist yet. Downloads a tarball via httpx, extracts safe members
-    into the data directory, then cleans up the tarball.
+    Only runs when DATA_RELEASE_URL is set and the consolidated index files
+    don't exist yet. The tarball contains just 3 files: the SQLite DB,
+    embeddings_index.npy, and embeddings_ids.json.
     """
-    logger.info(
-        f"Checking data: release_url={bool(settings.data_release_url)}, "
-        f"data_dir={settings.data_dir}, exists={settings.data_dir.exists()}"
-    )
-
     if not settings.data_release_url:
-        logger.info("No DATA_RELEASE_URL set, skipping download")
         return
 
-    # Check if we have a substantial number of embeddings (not a partial failed extraction)
-    from itertools import islice
-
-    embedding_count = 0
-    for emb_dir in [settings.embeddings_dir, settings.embeddings_avg_dir]:
-        if emb_dir.exists():
-            embedding_count += len(list(islice(emb_dir.glob("*.npy"), 1000)))
-    logger.info(f"Found {embedding_count} embedding files on disk")
-    if embedding_count >= 1000:
-        logger.info("Sufficient embeddings found, skipping download")
+    index_path = settings.data_dir / "embeddings_index.npy"
+    if index_path.exists():
+        print(
+            f"[data-check] Consolidated index exists at {index_path}, skipping download"
+        )
         return
 
-    logger.info("Data directory is empty — downloading dataset from GitHub Release...")
+    print("[data-check] Downloading dataset from GitHub Release...")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     tarball_path = settings.data_dir / "data.tar.gz"
 
@@ -60,13 +49,13 @@ def _download_data_if_needed():
                 for chunk in response.iter_bytes(chunk_size=8192):
                     f.write(chunk)
 
-        logger.info("Download complete. Extracting...")
+        print("[data-check] Download complete. Extracting...")
         with tarfile.open(tarball_path, "r:gz") as tar:
             tar.extractall(path=settings.data_dir, filter="data")
         tarball_path.unlink()
-        logger.info("Dataset extracted successfully")
+        print("[data-check] Dataset extracted successfully")
     except Exception as e:
-        logger.error(f"Failed to download dataset: {e}")
+        print(f"[data-check] Failed to download dataset: {e}")
         if tarball_path.exists():
             tarball_path.unlink()
 

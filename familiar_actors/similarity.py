@@ -28,12 +28,42 @@ class SimilarityIndex:
         return self.embeddings is not None and len(self.actor_ids) > 0
 
     def load(self, session: Session) -> None:
-        """Load all actor embeddings into memory from disk.
+        """Load all actor embeddings into memory.
 
-        Prefers clip_avg_embedding_path (multi-photo averaged) over
-        clip_embedding_path (single-photo). L2-normalizes all embeddings
-        so cosine similarity can be computed as a simple dot product.
+        First tries the consolidated index files (embeddings_index.npy +
+        embeddings_ids.json) for fast bulk loading. Falls back to loading
+        individual .npy files per actor if the consolidated files don't exist.
+        L2-normalizes all embeddings for cosine similarity via dot product.
         """
+        index_path = settings.data_dir / "embeddings_index.npy"
+        ids_path = settings.data_dir / "embeddings_ids.json"
+
+        # Try individual .npy files first (always correct for the current DB),
+        # fall back to consolidated index (used on Railway where individual files
+        # aren't deployed)
+        self._load_individual(session)
+        if not self.is_loaded and index_path.exists() and ids_path.exists():
+            self._load_consolidated(index_path, ids_path)
+
+        if self.is_loaded:
+            # Normalize for cosine similarity
+            norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+            self.embeddings = self.embeddings / norms
+            logger.info(f"Loaded {len(self.actor_ids)} actor embeddings into index")
+        else:
+            logger.warning("No valid embeddings loaded")
+
+    def _load_consolidated(self, index_path, ids_path) -> None:
+        """Load from pre-built consolidated files (two files instead of 100k+)."""
+        import json
+
+        with open(ids_path) as f:
+            self.actor_ids = json.load(f)
+        self.embeddings = np.load(index_path)
+        logger.info(f"Loaded consolidated index: {self.embeddings.shape}")
+
+    def _load_individual(self, session: Session) -> None:
+        """Fall back to loading individual .npy files per actor."""
         actors = session.exec(
             select(Actor).where(
                 or_(
@@ -52,7 +82,6 @@ class SimilarityIndex:
 
         for actor in actors:
             try:
-                # Prefer averaged multi-photo embedding, fall back to single-photo
                 embedding_path = (
                     actor.clip_avg_embedding_path or actor.clip_embedding_path
                 )
@@ -65,12 +94,6 @@ class SimilarityIndex:
         if vecs:
             self.actor_ids = ids
             self.embeddings = np.array(vecs)
-            # Normalize for cosine similarity
-            norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
-            self.embeddings = self.embeddings / norms
-            logger.info(f"Loaded {len(ids)} actor embeddings into index")
-        else:
-            logger.warning("No valid embeddings loaded")
 
     def search(
         self, actor_id: int, session: Session, top_n: int | None = None

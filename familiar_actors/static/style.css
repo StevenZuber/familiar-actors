@@ -323,7 +323,9 @@ footer p {
 
 .github-link {
     margin-top: 0.75rem;
-    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.90rem;
+    color:#aaa;
 }
 
 .github-link a {
