@@ -15,9 +15,10 @@ logger = logging.getLogger(__name__)
 class SimilarityIndex:
     """In-memory index of actor embeddings for fast cosine similarity search.
 
-    Loaded once at app startup from .npy files on disk. Prefers averaged
-    multi-photo embeddings when available, falls back to single-photo.
-    All embeddings are L2-normalized on load so similarity is a simple dot product.
+    Loaded once at app startup. Tries consolidated index files first
+    (embeddings_index.npy + embeddings_ids.json), falls back to individual
+    .npy files per actor. All embeddings are L2-normalized on load so
+    similarity is a simple dot product.
     """
 
     actor_ids: list[int] = field(default_factory=list)
@@ -87,8 +88,8 @@ class SimilarityIndex:
                 embedding = np.load(embedding_path)
                 ids.append(actor.id)
                 vecs.append(embedding)
-            except (FileNotFoundError, ValueError) as e:
-                logger.warning(f"Failed to load embedding for {actor.name}: {e}")
+            except (FileNotFoundError, ValueError):
+                pass  # Expected when individual files aren't deployed (Railway)
 
         if vecs:
             self.actor_ids = ids

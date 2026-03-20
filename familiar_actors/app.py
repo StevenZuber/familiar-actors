@@ -14,6 +14,7 @@ from familiar_actors.database import create_db_and_tables, engine
 from familiar_actors.routes.search import router as search_router
 from familiar_actors.similarity import SimilarityIndex
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 index = SimilarityIndex()
@@ -31,12 +32,9 @@ def _download_data_if_needed():
 
     index_path = settings.data_dir / "embeddings_index.npy"
     if index_path.exists():
-        print(
-            f"[data-check] Consolidated index exists at {index_path}, skipping download"
-        )
         return
 
-    print("[data-check] Downloading dataset from GitHub Release...")
+    logger.info("Downloading dataset from GitHub Release...")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     tarball_path = settings.data_dir / "data.tar.gz"
 
@@ -49,13 +47,13 @@ def _download_data_if_needed():
                 for chunk in response.iter_bytes(chunk_size=8192):
                     f.write(chunk)
 
-        print("[data-check] Download complete. Extracting...")
+        logger.info("Download complete. Extracting...")
         with tarfile.open(tarball_path, "r:gz") as tar:
             tar.extractall(path=settings.data_dir, filter="data")
         tarball_path.unlink()
-        print("[data-check] Dataset extracted successfully")
+        logger.info("Dataset extracted successfully")
     except Exception as e:
-        print(f"[data-check] Failed to download dataset: {e}")
+        logger.error(f"Failed to download dataset: {e}")
         if tarball_path.exists():
             tarball_path.unlink()
 

@@ -101,7 +101,7 @@ CAST_INITIAL_LIMIT = 20
 async def cast_page(
     request: Request,
     title_id: int = Query(...),
-    source: str = Query("movie"),
+    source: str = Query("movie", pattern="^(movie|tv)$"),
     show_all: bool = Query(False),
     session: Session = Depends(get_session),
 ):

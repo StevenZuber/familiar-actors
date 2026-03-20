@@ -5,7 +5,7 @@
     {% if cast %}
     <div class="results-grid">
         {% for member in cast %}
-        <div class="actor-card{% if member.in_database %} in-db{% endif %}"
+        <div class="actor-card"
              {% if member.actor_id %}
              hx-get="/search?actor_id={{ member.actor_id }}"
              hx-target="#results"
