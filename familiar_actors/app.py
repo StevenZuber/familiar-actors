@@ -26,29 +26,26 @@ def _download_data_if_needed():
     doesn't exist yet. Downloads a tarball via httpx, extracts safe members
     into the data directory, then cleans up the tarball.
     """
+    logger.info(
+        f"Checking data: release_url={bool(settings.data_release_url)}, "
+        f"data_dir={settings.data_dir}, exists={settings.data_dir.exists()}"
+    )
+
     if not settings.data_release_url:
+        logger.info("No DATA_RELEASE_URL set, skipping download")
         return
 
-    # Check if embeddings actually exist (not just empty dirs from a failed extraction)
-    has_embeddings = (
-        any(settings.embeddings_dir.glob("*.npy"))
-        if settings.embeddings_dir.exists()
-        else False
-    )
-    has_avg_embeddings = (
-        any(settings.embeddings_avg_dir.glob("*.npy"))
-        if settings.embeddings_avg_dir.exists()
-        else False
-    )
-    if has_embeddings or has_avg_embeddings:
+    # Check if we have a substantial number of embeddings (not a partial failed extraction)
+    from itertools import islice
+
+    embedding_count = 0
+    for emb_dir in [settings.embeddings_dir, settings.embeddings_avg_dir]:
+        if emb_dir.exists():
+            embedding_count += len(list(islice(emb_dir.glob("*.npy"), 1000)))
+    logger.info(f"Found {embedding_count} embedding files on disk")
+    if embedding_count >= 1000:
+        logger.info("Sufficient embeddings found, skipping download")
         return
-
-    # Clean up any partial extraction before re-downloading
-    import shutil
-
-    for d in [settings.embeddings_dir, settings.embeddings_avg_dir]:
-        if d.exists():
-            shutil.rmtree(d)
 
     logger.info("Data directory is empty — downloading dataset from GitHub Release...")
     settings.data_dir.mkdir(parents=True, exist_ok=True)
