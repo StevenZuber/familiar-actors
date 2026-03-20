@@ -1,5 +1,5 @@
 {
   "deploy": {
-    "startCommand": "rm -rf /app/data/* && uvicorn familiar_actors.app:app --host 0.0.0.0 --port ${PORT:-8080}"
+    "startCommand": "uvicorn familiar_actors.app:app --host 0.0.0.0 --port ${PORT:-8080}"
   }
 }
