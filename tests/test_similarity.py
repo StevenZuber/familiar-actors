@@ -119,3 +119,38 @@ class TestSimilarityIndex:
     def test_is_loaded_false_when_empty(self):
         index = SimilarityIndex()
         assert not index.is_loaded
+
+    def test_load_consolidated_index(self, db_session, tmp_path):
+        """Test loading from consolidated index files (the Railway code path)."""
+        import json
+        from unittest.mock import patch
+
+        # Create consolidated index files
+        ids = [1, 2, 3]
+        embeddings = np.array(
+            [
+                [1.0, 0.0, 0.0, 0.1],
+                [0.95, 0.05, 0.0, 0.1],
+                [0.0, 0.0, 1.0, 0.0],
+            ]
+        )
+
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        np.save(data_dir / "embeddings_index.npy", embeddings)
+        with open(data_dir / "embeddings_ids.json", "w") as f:
+            json.dump(ids, f)
+
+        index = SimilarityIndex()
+        with patch("familiar_actors.similarity.settings") as mock_settings:
+            mock_settings.data_dir = data_dir
+            mock_settings.similarity_top_n = 10
+            index.load(db_session)
+
+        assert index.is_loaded
+        assert len(index.actor_ids) == 3
+        assert index.embeddings.shape == (3, 4)
+
+        # Verify normalization
+        norms = np.linalg.norm(index.embeddings, axis=1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-6)

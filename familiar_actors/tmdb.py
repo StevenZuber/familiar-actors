@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -296,6 +297,9 @@ class TMDBClient:
                         f"Failed to fetch images for {actor.name} "
                         f"(tmdb_id={actor.tmdb_id})"
                     )
+
+                # Respect TMDB rate limits (40 req/10s)
+                await asyncio.sleep(0.25)
 
         logger.info(f"Downloaded multi-photos for {processed} actors")
         return processed

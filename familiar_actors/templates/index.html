@@ -26,6 +26,12 @@
     let debounceTimer;
     let searchMode = 'actor';
 
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     // Tab switching
     tabs.forEach(tab => {
         tab.addEventListener('click', function() {
@@ -75,20 +81,20 @@
                          hx-get="/search?actor_id=${actor.id}"
                          hx-target="#results"
                          hx-swap="innerHTML">
-                        <img src="${actor.tmdb_image_url || ''}"
-                             alt="${actor.name}"
+                        <img src="${escapeHtml(actor.tmdb_image_url || '')}"
+                             alt="${escapeHtml(actor.name)}"
                              class="suggestion-thumb"
                              onerror="this.style.display='none'">
-                        <span>${actor.name}</span>
+                        <span>${escapeHtml(actor.name)}</span>
                     </div>
                 `).join('');
             } else {
                 suggestions.innerHTML = results.map(title => `
                     <div class="suggestion-item"
-                         hx-get="/cast?title_id=${title.tmdb_id}&source=${title.source}"
+                         hx-get="/cast?title_id=${title.tmdb_id}&source=${escapeHtml(title.source)}"
                          hx-target="#results"
                          hx-swap="innerHTML">
-                        <span>${title.title}${title.year ? ` (${title.year})` : ''}</span>
+                        <span>${escapeHtml(title.title)}${title.year ? ` (${escapeHtml(title.year)})` : ''}</span>
                     </div>
                 `).join('');
             }

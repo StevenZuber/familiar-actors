@@ -25,7 +25,7 @@ class TestActor:
         assert actor.tmdb_id == 123
         assert actor.name == "Test Actor"
         assert actor.image_path is None
-        assert actor.embedding_path is None
+        assert actor.clip_embedding_path is None
 
     def test_tmdb_id_is_unique(self, db_session):
         actor1 = Actor(tmdb_id=123, name="Actor One")

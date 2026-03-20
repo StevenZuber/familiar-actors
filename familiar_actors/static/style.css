@@ -1,3 +1,19 @@
+:root {
+    --bg-base: #0f0f0f;
+    --bg-surface: #1a1a1a;
+    --bg-hover: #252525;
+    --border: #333;
+    --border-hover: #555;
+    --border-active: #666;
+    --text-primary: #fff;
+    --text-body: #e0e0e0;
+    --text-muted: #888;
+    --text-subtle: #666;
+    --text-faint: #555;
+    --text-link: #777;
+    --text-link-hover: #bbb;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -6,8 +22,8 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f0f0f;
-    color: #e0e0e0;
+    background: var(--bg-base);
+    color: var(--text-body);
     min-height: 100vh;
 }
 
@@ -24,12 +40,12 @@ header {
 
 header h1 {
     font-size: 2rem;
-    color: #fff;
+    color: var(--text-primary);
     margin-bottom: 0.25rem;
 }
 
 .subtitle {
-    color: #888;
+    color: var(--text-muted);
     font-size: 1rem;
 }
 
@@ -44,23 +60,23 @@ header h1 {
 .search-tab {
     padding: 0.4rem 1rem;
     background: transparent;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #777;
+    color: var(--text-link);
     font-size: 0.85rem;
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
 .search-tab:hover {
-    color: #bbb;
-    border-color: #555;
+    color: var(--text-link-hover);
+    border-color: var(--border-hover);
 }
 
 .search-tab.active {
-    color: #fff;
-    border-color: #666;
-    background: #1a1a1a;
+    color: var(--text-primary);
+    border-color: var(--border-active);
+    background: var(--bg-surface);
 }
 
 /* Search */
@@ -78,20 +94,20 @@ header h1 {
     width: 100%;
     padding: 0.75rem 1rem;
     font-size: 1rem;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #fff;
+    color: var(--text-primary);
     outline: none;
     transition: border-color 0.2s;
 }
 
 #actor-search:focus {
-    border-color: #555;
+    border-color: var(--border-hover);
 }
 
 #actor-search::placeholder {
-    color: #666;
+    color: var(--text-subtle);
 }
 
 /* Suggestions dropdown */
@@ -100,8 +116,8 @@ header h1 {
     top: 100%;
     left: 0;
     right: 0;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-top: none;
     border-radius: 0 0 8px 8px;
     max-height: 300px;
@@ -124,11 +140,11 @@ header h1 {
 }
 
 .suggestion-item:hover {
-    background: #252525;
+    background: var(--bg-hover);
 }
 
 .suggestion-item.no-results {
-    color: #666;
+    color: var(--text-subtle);
     cursor: default;
 }
 
@@ -164,18 +180,18 @@ header h1 {
 
 .query-actor-tmdb {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-subtle);
     text-decoration: none;
     transition: color 0.15s;
 }
 
 .query-actor-tmdb:hover {
-    color: #bbb;
+    color: var(--text-link-hover);
 }
 
 .results-section h2 {
     font-size: 1.25rem;
-    color: #fff;
+    color: var(--text-primary);
 }
 
 .results-grid {
@@ -185,7 +201,7 @@ header h1 {
 }
 
 .actor-card {
-    background: #1a1a1a;
+    background: var(--bg-surface);
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.15s;
@@ -213,8 +229,8 @@ header h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #252525;
-    color: #666;
+    background: var(--bg-hover);
+    color: var(--text-subtle);
     font-size: 0.85rem;
 }
 
@@ -241,7 +257,7 @@ header h1 {
 }
 
 .tmdb-link:hover {
-    color: #fff;
+    color: var(--text-primary);
     background: rgba(0, 0, 0, 0.9);
 }
 
@@ -251,18 +267,18 @@ header h1 {
 
 .actor-info h3 {
     font-size: 0.9rem;
-    color: #fff;
+    color: var(--text-primary);
     margin-bottom: 0.25rem;
 }
 
 .similarity-score {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-muted);
 }
 
 .character-name {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-subtle);
     font-style: italic;
 }
 
@@ -292,12 +308,12 @@ header h1 {
 }
 
 .show-more button:hover {
-    color: #fff;
-    border-color: #666;
+    color: var(--text-primary);
+    border-color: var(--border-active);
 }
 
 p.no-results {
-    color: #666;
+    color: var(--text-subtle);
     text-align: center;
     padding: 2rem;
 }
@@ -318,22 +334,22 @@ footer .tmdb-logo {
 
 footer p {
     font-size: 0.75rem;
-    color: #555;
+    color: var(--text-faint);
 }
 
 .github-link {
     margin-top: 0.75rem;
     margin-bottom: 0.75rem;
     font-size: 0.90rem;
-    color:#aaa;
+    color: #aaa;
 }
 
 .github-link a {
-    color: #777;
+    color: var(--text-link);
     text-decoration: none;
     transition: color 0.15s;
 }
 
 .github-link a:hover {
-    color: #bbb;
+    color: var(--text-link-hover);
 }

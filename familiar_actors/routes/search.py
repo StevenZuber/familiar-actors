@@ -36,9 +36,10 @@ async def search_actors(
     session: Session = Depends(get_session),
 ) -> list[dict]:
     """Search actors by name for autocomplete."""
+    escaped_q = q.replace("%", r"\%").replace("_", r"\_")
     actors = session.exec(
         select(Actor)
-        .where(Actor.name.ilike(f"%{q}%"))  # type: ignore[union-attr]
+        .where(Actor.name.ilike(f"%{escaped_q}%", escape="\\"))  # type: ignore[union-attr]
         .limit(10)
     ).all()
     return [
