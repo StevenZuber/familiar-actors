@@ -162,6 +162,17 @@ header h1 {
     object-fit: cover;
 }
 
+.query-actor-tmdb {
+    font-size: 0.8rem;
+    color: #666;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.query-actor-tmdb:hover {
+    color: #bbb;
+}
+
 .results-section h2 {
     font-size: 1.25rem;
     color: #fff;
