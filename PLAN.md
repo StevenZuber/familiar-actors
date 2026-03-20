@@ -102,7 +102,7 @@ TMDB_READ_ACCESS_TOKEN=your_token_here
 - [x] First `build` run (~8k actors from popular endpoint)
 - [x] Swap ArcFace → CLIP (dramatically better similarity results)
 - [x] `fetch-credits` command to crawl movie/TV cast lists
-- [ ] Scale dataset via credits crawling (target: 50k+ actors)
+- [x] Scale dataset via credits crawling (target: 50k+ actors)
 - [ ] End-to-end verification with large dataset
 
 ## Scaling Path

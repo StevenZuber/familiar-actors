@@ -94,11 +94,15 @@ async def search_titles(
     return await client.search_titles(q)
 
 
+CAST_INITIAL_LIMIT = 20
+
+
 @router.get("/cast")
 async def cast_page(
     request: Request,
     title_id: int = Query(...),
     source: str = Query("movie"),
+    show_all: bool = Query(False),
     session: Session = Depends(get_session),
 ):
     """HTMX endpoint — show cast for a movie/show."""
@@ -107,9 +111,13 @@ async def cast_page(
 
     title_name, cast = await client.fetch_cast(title_id, source)
 
+    total_cast_count = len(cast)
+    has_more = not show_all and total_cast_count > CAST_INITIAL_LIMIT
+    visible_cast = cast if show_all else cast[:CAST_INITIAL_LIMIT]
+
     # Check which cast members are already in our database
     cast_with_db_info = []
-    for member in cast:
+    for member in visible_cast:
         actor = session.exec(
             select(Actor).where(Actor.tmdb_id == member["tmdb_id"])
         ).first()
@@ -118,7 +126,10 @@ async def cast_page(
                 **member,
                 "actor_id": actor.id if actor else None,
                 "in_database": actor is not None
-                and actor.clip_embedding_path is not None,
+                and (
+                    actor.clip_avg_embedding_path is not None
+                    or actor.clip_embedding_path is not None
+                ),
             }
         )
 
@@ -128,5 +139,9 @@ async def cast_page(
             "request": request,
             "title_name": title_name,
             "cast": cast_with_db_info,
+            "has_more": has_more,
+            "title_id": title_id,
+            "source": source,
+            "remaining_count": total_cast_count - CAST_INITIAL_LIMIT if has_more else 0,
         },
     )

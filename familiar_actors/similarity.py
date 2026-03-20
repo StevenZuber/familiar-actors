@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass, field
 
 import numpy as np
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from familiar_actors.config import settings
@@ -12,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SimilarityIndex:
-    """In-memory index of actor embeddings for fast similarity search."""
+    """In-memory index of actor embeddings for fast cosine similarity search.
+
+    Loaded once at app startup from .npy files on disk. Prefers averaged
+    multi-photo embeddings when available, falls back to single-photo.
+    All embeddings are L2-normalized on load so similarity is a simple dot product.
+    """
 
     actor_ids: list[int] = field(default_factory=list)
     embeddings: np.ndarray | None = None
@@ -22,10 +28,18 @@ class SimilarityIndex:
         return self.embeddings is not None and len(self.actor_ids) > 0
 
     def load(self, session: Session) -> None:
-        """Load all actor embeddings into memory."""
+        """Load all actor embeddings into memory from disk.
+
+        Prefers clip_avg_embedding_path (multi-photo averaged) over
+        clip_embedding_path (single-photo). L2-normalizes all embeddings
+        so cosine similarity can be computed as a simple dot product.
+        """
         actors = session.exec(
             select(Actor).where(
-                Actor.clip_embedding_path.isnot(None)  # type: ignore[union-attr]
+                or_(
+                    Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                    Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
+                )
             )
         ).all()
 
@@ -38,7 +52,11 @@ class SimilarityIndex:
 
         for actor in actors:
             try:
-                embedding = np.load(actor.clip_embedding_path)
+                # Prefer averaged multi-photo embedding, fall back to single-photo
+                embedding_path = (
+                    actor.clip_avg_embedding_path or actor.clip_embedding_path
+                )
+                embedding = np.load(embedding_path)
                 ids.append(actor.id)
                 vecs.append(embedding)
             except (FileNotFoundError, ValueError) as e:
@@ -57,7 +75,11 @@ class SimilarityIndex:
     def search(
         self, actor_id: int, session: Session, top_n: int | None = None
     ) -> list[ActorResult]:
-        """Find the most similar actors to the given actor."""
+        """Find the most similar actors to the given actor by cosine similarity.
+
+        Returns the top N most similar actors, excluding the queried actor.
+        Scores range from -1 to 1, where 1 means identical embeddings.
+        """
         if not self.is_loaded:
             return []
 

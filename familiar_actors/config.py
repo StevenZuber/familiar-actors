@@ -12,13 +12,33 @@ class Settings(BaseSettings):
     tmdb_read_access_token: str = ""
 
     data_dir: Path = Path("data")
-    headshots_dir: Path = Path("data/headshots")
-    embeddings_dir: Path = Path("data/embeddings_clip")
-    db_path: Path = Path("data/familiar_actors.db")
 
     embedding_model: str = "ViT-B-32"
     clip_pretrained: str = "openai"
     similarity_top_n: int = 10
+    multi_image_size: str = "w500"
+    min_image_width: int = 500
+    max_photos_per_actor: int = 5
+
+    @property
+    def headshots_dir(self) -> Path:
+        return self.data_dir / "headshots"
+
+    @property
+    def embeddings_dir(self) -> Path:
+        return self.data_dir / "embeddings_clip"
+
+    @property
+    def headshots_multi_dir(self) -> Path:
+        return self.data_dir / "headshots_multi"
+
+    @property
+    def embeddings_avg_dir(self) -> Path:
+        return self.data_dir / "embeddings_avg"
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "familiar_actors.db"
 
     @property
     def database_url(self) -> str:
