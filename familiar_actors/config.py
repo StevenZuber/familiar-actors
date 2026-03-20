@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     )
 
     tmdb_read_access_token: str = ""
+    data_release_url: str = ""
 
     data_dir: Path = Path("data")
 
