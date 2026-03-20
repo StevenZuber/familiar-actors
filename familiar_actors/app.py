@@ -28,7 +28,7 @@ def _download_data_if_needed():
     """
     if not settings.data_release_url:
         return
-    if settings.db_path.exists():
+    if settings.embeddings_dir.exists() or settings.embeddings_avg_dir.exists():
         return
 
     logger.info("Data directory is empty — downloading dataset from GitHub Release...")
