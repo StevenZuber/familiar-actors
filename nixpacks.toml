@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python312"]
-
-[phases.install]
-cmds = ["pip install uv && uv sync --no-dev"]
-
-[start]
-cmd = "uvicorn familiar_actors.app:app --host 0.0.0.0 --port ${PORT:-8080}"

@@ -148,5 +148,3 @@ cython_debug/
 data/
 
 .claude/
-
-uv.lock
