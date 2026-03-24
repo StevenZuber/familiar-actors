@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session
 
+from familiar_actors.actor_search import ActorSearchIndex
 from familiar_actors.config import settings
 from familiar_actors.database import create_db_and_tables, engine
 from familiar_actors.routes.search import router as search_router
@@ -18,6 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 index = SimilarityIndex()
+search_index = ActorSearchIndex()
 
 
 def _download_data_if_needed():
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     with Session(engine) as session:
         index.load(session)
+        search_index.load(session)
     yield
 
 

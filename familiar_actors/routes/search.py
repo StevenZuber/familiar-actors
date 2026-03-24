@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from familiar_actors.database import get_session
@@ -20,8 +21,19 @@ def get_templates():
     return templates
 
 
+def get_search_index():
+    from familiar_actors.app import search_index
+
+    return search_index
+
+
 def get_tmdb_client():
     return TMDBClient()
+
+
+def is_htmx_request(request: Request) -> bool:
+    """Check if the request was made by HTMX (partial) vs direct navigation (full page)."""
+    return request.headers.get("HX-Request") == "true"
 
 
 @router.get("/")
@@ -30,27 +42,38 @@ async def home(request: Request):
     return tmpl.TemplateResponse("index.html", {"request": request})
 
 
+@router.get("/about")
+async def about(request: Request, session: Session = Depends(get_session)):
+    """About page with project info and live dataset stats."""
+    tmpl = get_templates()
+    actor_count = session.exec(select(func.count()).select_from(Actor)).one()
+    embedding_count = session.exec(
+        select(func.count())
+        .select_from(Actor)
+        .where(
+            or_(
+                Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
+            )
+        )
+    ).one()
+    return tmpl.TemplateResponse(
+        "about.html",
+        {
+            "request": request,
+            "actor_count": actor_count,
+            "embedding_count": embedding_count,
+        },
+    )
+
+
 @router.get("/api/search")
 async def search_actors(
     q: str = Query(min_length=1),
-    session: Session = Depends(get_session),
 ) -> list[dict]:
-    """Search actors by name for autocomplete."""
-    escaped_q = q.replace("%", r"\%").replace("_", r"\_")
-    actors = session.exec(
-        select(Actor)
-        .where(Actor.name.ilike(f"%{escaped_q}%", escape="\\"))  # type: ignore[union-attr]
-        .limit(10)
-    ).all()
-    return [
-        {
-            "id": a.id,
-            "tmdb_id": a.tmdb_id,
-            "name": a.name,
-            "tmdb_image_url": a.tmdb_image_url,
-        }
-        for a in actors
-    ]
+    """Search actors by name for autocomplete. Prefix match first, fuzzy fallback."""
+    actor_search = get_search_index()
+    return actor_search.search(q, limit=10)
 
 
 @router.get("/api/similar/{actor_id}")
@@ -69,21 +92,30 @@ async def search_page(
     actor_id: int = Query(...),
     session: Session = Depends(get_session),
 ):
-    """HTMX endpoint — returns rendered results partial."""
+    """Returns results partial for HTMX, or full page for direct navigation."""
     tmpl = get_templates()
     similarity_index = get_index()
 
     actor = session.get(Actor, actor_id)
     results = similarity_index.search(actor_id, session)
 
-    return tmpl.TemplateResponse(
-        "results.html",
+    context = {
+        "request": request,
+        "actor": actor,
+        "results": results,
+    }
+
+    if is_htmx_request(request):
+        return tmpl.TemplateResponse("results.html", context)
+
+    context.update(
         {
-            "request": request,
-            "actor": actor,
-            "results": results,
-        },
+            "partial_template": "results.html",
+            "search_mode": "actor",
+            "search_value": actor.name if actor else "",
+        }
     )
+    return tmpl.TemplateResponse("full_page.html", context)
 
 
 @router.get("/api/search-titles")
@@ -134,15 +166,24 @@ async def cast_page(
             }
         )
 
-    return tmpl.TemplateResponse(
-        "cast.html",
+    context = {
+        "request": request,
+        "title_name": title_name,
+        "cast": cast_with_db_info,
+        "has_more": has_more,
+        "title_id": title_id,
+        "source": source,
+        "remaining_count": total_cast_count - CAST_INITIAL_LIMIT if has_more else 0,
+    }
+
+    if is_htmx_request(request):
+        return tmpl.TemplateResponse("cast.html", context)
+
+    context.update(
         {
-            "request": request,
-            "title_name": title_name,
-            "cast": cast_with_db_info,
-            "has_more": has_more,
-            "title_id": title_id,
-            "source": source,
-            "remaining_count": total_cast_count - CAST_INITIAL_LIMIT if has_more else 0,
-        },
+            "partial_template": "cast.html",
+            "search_mode": "title",
+            "search_value": title_name,
+        }
     )
+    return tmpl.TemplateResponse("full_page.html", context)

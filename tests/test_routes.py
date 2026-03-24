@@ -66,29 +66,27 @@ def seeded_db(db_engine, tmp_path):
 def client(seeded_db):
     """Create a test client with a seeded database."""
     from familiar_actors import app as app_module
+    from familiar_actors.actor_search import ActorSearchIndex
+    from familiar_actors.app import app
+    from familiar_actors.database import get_session
+    from familiar_actors.similarity import SimilarityIndex
 
-    # Patch the engine and recreate the app dependencies
-    app_module.engine
-
-    with patch.object(app_module, "engine", seeded_db):
-        from familiar_actors.app import app
-        from familiar_actors.database import get_session
-        from familiar_actors.similarity import SimilarityIndex
-
-        def override_get_session():
-            with Session(seeded_db) as session:
-                yield session
-
-        app.dependency_overrides[get_session] = override_get_session
-
-        # Load the similarity index with test data
+    def override_get_session():
         with Session(seeded_db) as session:
-            app_module.index = SimilarityIndex()
-            app_module.index.load(session)
+            yield session
 
-        yield TestClient(app, raise_server_exceptions=False)
+    app.dependency_overrides[get_session] = override_get_session
 
-        app.dependency_overrides.clear()
+    # Load the similarity and search indexes with test data
+    with Session(seeded_db) as session:
+        app_module.index = SimilarityIndex()
+        app_module.index.load(session)
+        app_module.search_index = ActorSearchIndex()
+        app_module.search_index.load(session)
+
+    yield TestClient(app)
+
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.unit
@@ -133,10 +131,32 @@ class TestSearchPage:
         assert response.status_code == 200
         assert "Familiar Actors" in response.text
 
-    def test_search_htmx_endpoint(self, client):
+    def test_search_htmx_returns_partial(self, client):
+        response = client.get("/search?actor_id=1", headers={"HX-Request": "true"})
+        assert response.status_code == 200
+        assert "Actors who look like" in response.text
+        assert "<html" not in response.text
+
+    def test_search_direct_returns_full_page(self, client):
         response = client.get("/search?actor_id=1")
         assert response.status_code == 200
         assert "Actors who look like" in response.text
+        assert "actor-search" in response.text
+
+
+@pytest.mark.unit
+class TestAboutPage:
+    def test_about_page_renders(self, client):
+        response = client.get("/about")
+        assert response.status_code == 200
+        assert "Why this exists" in response.text
+        assert "Tech stack" in response.text
+
+    def test_about_page_has_live_stats(self, client):
+        response = client.get("/about")
+        assert response.status_code == 200
+        # Should contain formatted numbers from the database
+        assert "actors" in response.text.lower()
 
 
 @pytest.mark.unit
