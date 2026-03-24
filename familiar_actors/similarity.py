@@ -45,7 +45,7 @@ class SimilarityIndex:
         if not self.is_loaded and index_path.exists() and ids_path.exists():
             self._load_consolidated(index_path, ids_path)
 
-        if self.is_loaded:
+        if self.is_loaded and self.embeddings is not None:
             # Normalize for cosine similarity
             norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
             self.embeddings = self.embeddings / norms
@@ -85,7 +85,11 @@ class SimilarityIndex:
                 embedding_path = (
                     actor.clip_avg_embedding_path or actor.clip_embedding_path
                 )
+                if not embedding_path:
+                    continue
                 embedding = np.load(embedding_path)
+                if actor.id is None:
+                    continue
                 ids.append(actor.id)
                 vecs.append(embedding)
             except (FileNotFoundError, ValueError):
@@ -103,7 +107,7 @@ class SimilarityIndex:
         Returns the top N most similar actors, excluding the queried actor.
         Scores range from -1 to 1, where 1 means identical embeddings.
         """
-        if not self.is_loaded:
+        if not self.is_loaded or self.embeddings is None:
             return []
 
         top_n = top_n or settings.similarity_top_n
@@ -128,7 +132,7 @@ class SimilarityIndex:
                 break
 
             matched_actor = session.get(Actor, self.actor_ids[i])
-            if matched_actor:
+            if matched_actor and matched_actor.id is not None:
                 results.append(
                     ActorResult(
                         id=matched_actor.id,

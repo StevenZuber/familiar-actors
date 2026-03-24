@@ -38,8 +38,8 @@ def main():
         actors = session.exec(
             select(Actor).where(
                 or_(
-                    Actor.clip_avg_embedding_path.isnot(None),
-                    Actor.clip_embedding_path.isnot(None),
+                    Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                    Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
                 )
             )
         ).all()
@@ -51,6 +51,8 @@ def main():
         for actor in actors:
             try:
                 path = actor.clip_avg_embedding_path or actor.clip_embedding_path
+                if not path:
+                    continue
                 emb = np.load(path)
                 ids.append(actor.id)
                 vecs.append(emb)

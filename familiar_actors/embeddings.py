@@ -17,7 +17,7 @@ def _get_model():
     global _model, _preprocess
     if _model is None:
         try:
-            import open_clip
+            import open_clip  # type: ignore[import-untyped]
         except ImportError:
             raise RuntimeError(
                 "open-clip-torch is not installed. "
@@ -50,10 +50,12 @@ def generate_embedding(image_path: str) -> np.ndarray | None:
         from PIL import Image
 
         model, preprocess = _get_model()
+        if preprocess is None:
+            return None
         image = Image.open(image_path).convert("RGB")
         image_tensor = preprocess(image).unsqueeze(0)
 
-        with torch.no_grad():
+        with torch.no_grad():  # type: ignore[no-untyped-call]
             embedding = model.encode_image(image_tensor)
 
         return embedding.squeeze().numpy()
@@ -84,6 +86,8 @@ def process_all_embeddings(session: Session) -> int:
     processed = 0
 
     for actor in actors:
+        if not actor.image_path:
+            continue
         embedding = generate_embedding(actor.image_path)
         if embedding is None:
             continue

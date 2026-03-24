@@ -30,9 +30,9 @@ class ActorSearchIndex:
 
     def load(self, session: Session) -> None:
         """Load all actor names and metadata into memory."""
-        actors = session.exec(select(Actor)).all()
+        actors = [a for a in session.exec(select(Actor)).all() if a.id is not None]
         self._names = [a.name for a in actors]
-        self._ids = [a.id for a in actors]
+        self._ids = [a.id for a in actors]  # type: ignore[misc]
         self._tmdb_ids = [a.tmdb_id for a in actors]
         self._image_urls = [a.tmdb_image_url for a in actors]
         self._names_lower = [n.lower() for n in self._names]
