@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="about-page">
+
+    <section class="about-section">
+        <h2>Why this exists</h2>
+        <p>
+            I'm terrible at recognizing faces. When I'm watching a show, I'll often see an actor and think
+            "I know that face..." — then I'll look them up and realize it's not who I thought it was.
+            Now I'm stuck wondering: who <em>was</em> I thinking of?
+        </p>
+        <p>
+            Familiar Actors aims to solve that. Type in the actor you just looked up, and it'll show you actors who look similar. One of them is probably (hopefully) who you had in mind.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>How it works</h2>
+        <ol>
+            <li><strong>Actor headshots</strong> are sourced from <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDB</a>'s database of {{ "{:,}".format(actor_count) }} actors.
+                <ul id="embedding-count"><em>By the way, that's the real current number. The counts on this page come from two SQL queries in the /about route — one for actors, one for embedding paths.</em>
+                </ul>
+        </li>
+            <li>Each headshot is processed through <strong>OpenCLIP</strong> (ViT-B-32) to generate an <strong>embedding</strong> — a 512-dimensional vector that captures visual features like face shape, coloring, and overall appearance.</li>
+            <li>When you search for an actor, their embedding is compared against all {{ "{:,}".format(embedding_count) }} others using <strong>cosine similarity</strong>.</li>
+            <li>The most similar faces are returned, ranked by score.</li>
+        </ol>
+    </section>
+
+    <section class="about-section">
+        <h2>Tech stack</h2>
+        <ul>
+            <li><strong>FastAPI</strong> + <strong>Jinja2</strong> + <strong>HTMX</strong> — Python backend with server-rendered templates and async interactivity</li>
+            <li><strong>OpenCLIP</strong> (ViT-B-32) — visual similarity embeddings from OpenAI's CLIP model</li>
+            <li><strong>SQLModel</strong> / SQLite — actor metadata storage</li>
+            <li><strong>numpy</strong> — in-memory cosine similarity search across 100k+ embeddings</li>
+            <li><strong>rapidfuzz</strong> — typo-tolerant actor name search</li>
+            <li><strong>TMDB API</strong> — actor data, headshots, and movie/show cast lists</li>
+            <li>Deployed on <strong>Railway</strong></li>
+        </ul>
+    </section>
+
+    <section class="about-section">
+        <h2>The development story</h2>
+        <p>
+            This project was built collaboratively with <a href="https://claude.ai" target="_blank" rel="noopener">Claude</a> (Anthropic's AI assistant)
+            over the course of a few intensive sessions. The collaboration was genuine — not "AI writes code, human approves" but
+            a back-and-forth where we workshopped ideas, debated approaches, and course-corrected together.
+        </p>
+        <p>
+            Some highlights from the process:
+        </p>
+        <ul>
+            <li>
+                <strong>The ArcFace pivot.</strong> We initially used deepface with ArcFace embeddings for facial similarity.
+                The results were terrible — Samuel L. Jackson's closest match was a young white woman.
+                It turned out ArcFace is designed for face <em>verification</em> (is this the same person?),
+                not visual similarity. Swapping to CLIP, which captures holistic visual similarity, immediately
+                brought match scores from 35% to 89%.
+            </li>
+            <li>
+                <strong>The Railway deployment battle.</strong> Getting the dataset onto Railway's volume
+                was an adventure involving inode limits (180k tiny files), ephemeral disk confusion,
+                and multiple volume wipes. The solution was consolidating 180k individual embedding files
+                into a single numpy array — the app now downloads a 206MB tarball on first boot.
+            </li>
+            <li>
+                <strong>TV cast discovery.</strong> We found that TMDB's regular credits endpoint only
+                returns 4 actors for The Office (not even Steve Carell!). Switching to the aggregate_credits
+                endpoint returned all 691 cast members across every season.
+            </li>
+        </ul>
+    </section>
+
+    <section class="about-section">
+        <h2>Dataset</h2>
+        <p>
+            The database currently contains <strong>{{ "{:,}".format(actor_count) }} actors</strong> with
+            <strong>{{ "{:,}".format(embedding_count) }} searchable embeddings</strong>.
+            Data is sourced from TMDB's popular actors endpoint, cast lists from top-rated movies and TV shows,
+            and a background crawler that systematically discovers actors across decades of film and television.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>About me</h2>
+        <p>
+            I'm Steven Zuber, a software engineer at SymbyAI and a long time artificial intelligence enthusiast. While I've used Claude in my professional work for years and have used Claude to help with dozens of small, one-off problems, this is my first project I've started from scratch with Claude Code. You can find this project's source code
+            <a href="https://github.com/StevenZuber/familiar-actors" target="_blank" rel="noopener">on GitHub</a>.
+        </p>
+        <p>
+            If you have any feedback, suggestions for improvement, or just want to chat about the project, please feel free to check out the <a href="https://github.com/StevenZuber/familiar-actors/discussions" target="_blank" rel="noopener">GitHub Discussions</a> page for this project.
+    </section>
+
+</div>
+{% endblock %}

@@ -49,6 +49,115 @@ header h1 {
     font-size: 1rem;
 }
 
+.header-link {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
+}
+
+.header-link:hover h1 {
+    opacity: 0.8;
+}
+
+.header-nav {
+    margin-top: 0.5rem;
+}
+
+.header-nav a {
+    font-size: 0.85rem;
+    color: var(--text-link);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.header-nav a:hover {
+    color: var(--text-link-hover);
+}
+
+/* About page */
+.about-page {
+    max-width: 660px;
+    margin: 0 auto;
+    padding: 1rem 0;
+}
+
+.about-section {
+    margin-bottom: 2.5rem;
+    padding: 1.5rem;
+    background: var(--bg-surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+}
+
+.about-section h2 {
+    font-size: 1.15rem;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 0.02em;
+}
+
+.about-section p {
+    line-height: 1.8;
+    margin-bottom: 0.85rem;
+    color: var(--text-body);
+    font-size: 0.95rem;
+}
+
+.about-section p:last-child {
+    margin-bottom: 0;
+}
+
+.about-section ul,
+.about-section ol {
+    line-height: 1.8;
+    margin-bottom: 0.85rem;
+    padding-left: 1.5rem;
+    color: var(--text-body);
+    font-size: 0.95rem;
+}
+
+.about-section ul:last-child,
+.about-section ol:last-child {
+    margin-bottom: 0;
+}
+
+.about-section li {
+    margin-bottom: 0.6rem;
+}
+
+.about-section li:last-child {
+    margin-bottom: 0;
+}
+
+.about-section strong {
+    color: var(--text-primary);
+}
+
+.about-section em {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.about-section a {
+    color: var(--text-link-hover);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.about-section a:hover {
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+#embedding-count {
+    font-size: 0.9rem;
+    color: var(--text-subtle);
+    padding-left: 1.5rem;
+}
+
 /* Search tabs */
 .search-tabs {
     display: flex;
