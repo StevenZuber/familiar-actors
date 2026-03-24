@@ -10,6 +10,7 @@
              hx-get="/search?actor_id={{ member.actor_id }}"
              hx-target="#results"
              hx-swap="innerHTML"
+             hx-push-url="true"
              hx-on::before-request="document.getElementById('actor-search').value = '{{ member.name }}'; document.querySelectorAll('.search-tab').forEach(t => { t.classList.toggle('active', t.dataset.mode === 'actor'); }); searchMode = 'actor';"
              {% endif %}>
             <div class="actor-image">
@@ -39,7 +40,8 @@
     <div class="show-more">
         <button hx-get="/cast?title_id={{ title_id }}&source={{ source }}&show_all=true"
                 hx-target="#results"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-push-url="true">
             Show {{ remaining_count }} more cast members
         </button>
     </div>

@@ -17,6 +17,7 @@
              hx-get="/search?actor_id={{ result.id }}"
              hx-target="#results"
              hx-swap="innerHTML"
+             hx-push-url="true"
              hx-on::before-request="document.getElementById('actor-search').value = '{{ result.name }}'">
             <div class="actor-image">
                 {% if result.tmdb_image_url %}

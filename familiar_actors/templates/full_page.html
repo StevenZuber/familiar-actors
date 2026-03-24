@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="search-section">
+    <div class="search-tabs">
+        <button class="search-tab {{ 'active' if search_mode == 'actor' else '' }}" data-mode="actor">Actor</button>
+        <button class="search-tab {{ 'active' if search_mode == 'title' else '' }}" data-mode="title">Movie / Show</button>
+    </div>
+    <div class="search-wrapper">
+        <input
+            type="text"
+            id="actor-search"
+            placeholder="{{ 'Search for an actor...' if search_mode == 'actor' else 'Search for a movie or show...' }}"
+            autocomplete="off"
+            value="{{ search_value }}"
+        >
+        <div id="suggestions" class="suggestions"></div>
+    </div>
+</div>
+
+<div id="results">
+    {% include partial_template %}
+</div>
+
+<script src="/static/search.js" defer></script>
+{% endblock %}
