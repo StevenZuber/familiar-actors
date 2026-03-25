@@ -67,6 +67,31 @@ async def about(request: Request, session: Session = Depends(get_session)):
     )
 
 
+@router.get("/technical")
+async def technical(request: Request, session: Session = Depends(get_session)):
+    """Technical deep dive page with live dataset stats."""
+    tmpl = get_templates()
+    actor_count = session.exec(select(func.count()).select_from(Actor)).one()
+    embedding_count = session.exec(
+        select(func.count())
+        .select_from(Actor)
+        .where(
+            or_(
+                Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
+            )
+        )
+    ).one()
+    return tmpl.TemplateResponse(
+        "technical.html",
+        {
+            "request": request,
+            "actor_count": actor_count,
+            "embedding_count": embedding_count,
+        },
+    )
+
+
 @router.get("/api/search")
 async def search_actors(
     q: str = Query(min_length=1),

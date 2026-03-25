@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="about-page">
+
+    <section class="about-section">
+        <h2>Technical Deep Dive</h2>
+        <p>
+            This page covers the engineering decisions behind Familiar Actors — what worked,
+            what didn't, and why things are built the way they are.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>The Embedding Pipeline</h2>
+        <p>
+            The core idea is simple: turn each actor's headshot into a list of 512 numbers
+            (a "vector") that captures what they look like, then compare those lists to find
+            similar-looking people.
+        </p>
+        <h3>Why CLIP, not a face recognition model?</h3>
+        <p>
+            Our first attempt used <strong>ArcFace</strong> via deepface — a model designed for
+            face verification ("is this the same person?"). The results were terrible. Samuel L. Jackson's
+            closest match was a young white woman named Camilla Belle. Known lookalike pairs like
+            Bryce Dallas Howard and Jessica Chastain didn't match at all.
+        </p>
+        <p>
+            The problem: ArcFace is trained with angular margin loss that <em>maximizes</em> the distance
+            between different identities. It's literally optimized to make different people look as
+            different as possible. The similarity scores between different people were meaningless noise.
+        </p>
+        <p>
+            <strong>CLIP</strong> (Contrastive Language-Image Pre-training) captures holistic visual
+            similarity — face shape, coloring, hair, expression, overall vibe. When someone says
+            "that actor looks familiar," they're matching on this kind of high-level impression,
+            not pixel-perfect facial geometry. Switching to CLIP immediately brought match scores
+            from 35% to 89% for known similar actors.
+        </p>
+        <h3>Multi-photo averaging</h3>
+        <p>
+            A single headshot can be misleading — bad lighting, unusual angle, a styled look for a
+            particular role. To get a more stable representation, we fetch up to 5 profile photos per actor
+            from TMDB (ranked by community votes), generate an embedding for each, and average them.
+            The math: L2-normalize each embedding so every photo contributes equally, compute the
+            element-wise mean, then re-normalize the result back to the unit sphere.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Data Architecture</h2>
+        <p>
+            The system has three layers of data, each serving a different purpose:
+        </p>
+        <h3>The database (familiar_actors.db)</h3>
+        <p>
+            A SQLite database that stores metadata for every actor: their name, TMDB ID,
+            image URLs, and file paths pointing to their headshots and embeddings. This is
+            the source of truth — everything else can be regenerated from it (with time and
+            API calls). It's small (~24MB) and gets committed to the repo as a backup.
+        </p>
+        <h3>Headshots (data/headshots/)</h3>
+        <p>
+            JPEG thumbnails (185px wide) downloaded from TMDB's image CDN. These serve two
+            purposes: they're the input for CLIP embedding generation, and they could be used
+            for local image display. The web app actually hotlinks TMDB's CDN for display
+            (saving disk space on the server), so the local headshots are only needed when
+            generating new embeddings. They're expendable — if deleted, they can be
+            re-downloaded, but doing so takes days due to rate limits.
+        </p>
+        <h3>Embeddings (data/embeddings_clip/ and data/embeddings_avg/)</h3>
+        <p>
+            Each actor's visual representation as a 512-dimensional numpy array, saved as
+            individual <code>.npy</code> files. <code>embeddings_clip/</code> contains
+            single-photo embeddings; <code>embeddings_avg/</code> contains multi-photo
+            averaged embeddings (higher quality, when available). The similarity index
+            prefers averaged embeddings and falls back to single-photo.
+        </p>
+        <h3>The consolidated index (embeddings_index.npy + embeddings_ids.json)</h3>
+        <p>
+            For deployment, all individual embedding files are consolidated into a single
+            numpy array (~200MB) plus a JSON file mapping array positions to database IDs.
+            This exists because Railway's volume has inode limits that prevented deploying
+            180k+ individual files. The consolidation script (<code>consolidate_index.py</code>)
+            rebuilds these from the individual files whenever the dataset changes.
+        </p>
+        <h3>The relationship</h3>
+        <pre><code>Database (source of truth)
+  ↓ points to
+Headshots (raw images) → fed into CLIP → Individual Embeddings
+                                              ↓ consolidated into
+                                         Index Files (for Railway)
+                                              ↓ loaded at startup
+                                         In-Memory Numpy Array (for search)</code></pre>
+        <p>
+            Locally, the app loads individual embedding files directly. On Railway, it loads
+            the consolidated index. Either way, the end result is the same: a single numpy
+            matrix in memory, ready for cosine similarity search.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Similarity Search</h2>
+        <p>
+            With {{ "{:,}".format(embedding_count) }} actor embeddings loaded into memory as a single
+            numpy array, finding similar actors is a matrix multiplication:
+        </p>
+        <pre><code>similarities = embeddings @ query_vector</code></pre>
+        <p>
+            Since all embeddings are L2-normalized at load time, this dot product gives us cosine
+            similarity directly. The result is a score for every actor in the database, computed
+            in a single vectorized operation. Sorting and taking the top 10 is the slow part —
+            and it's still under a millisecond.
+        </p>
+        <h3>What is L2-normalization?</h3>
+        <p>
+            Each CLIP embedding is a vector of 512 numbers — but those numbers can have
+            different magnitudes depending on the image. One photo might produce a vector
+            with values ranging from -2 to 3, another from -0.5 to 0.8. If we compared
+            these raw vectors, the magnitude would affect the similarity score — a "louder"
+            vector would appear more similar to everything.
+        </p>
+        <p>
+            L2-normalization fixes this by scaling every vector to have a length (magnitude)
+            of exactly 1. Think of it as projecting every point onto the surface of a sphere.
+            After normalization, the only thing that differs between vectors is their
+            <em>direction</em> — which is exactly what we care about. Two actors who "point"
+            in similar directions in this 512-dimensional space look similar.
+        </p>
+        <p>
+            The math is straightforward: divide each vector by its L2-norm
+            (the square root of the sum of its squared components). Once every vector sits
+            on the unit sphere, the dot product between any two of them equals their cosine
+            similarity — a value from -1 (opposite) to 1 (identical). This is why a single
+            matrix multiplication gives us all the similarity scores at once.
+        </p>
+        <p>
+            We also L2-normalize during multi-photo averaging: normalize each individual photo's
+            embedding <em>before</em> averaging so that every photo contributes equally regardless
+            of its raw magnitude, then re-normalize the average back onto the unit sphere.
+        </p>
+        <p>
+            For the current dataset size, plain numpy is more than fast enough. If the dataset
+            grows to millions of actors, we'll swap the internals to <strong>FAISS</strong>
+            (Facebook's similarity search library) for approximate nearest-neighbor search.
+            The interface wouldn't change — just faster lookups.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Actor Name Search</h2>
+        <p>
+            The search bar uses a two-stage approach. First, a <strong>prefix match</strong>
+            checks if any actor name starts with what you've typed — this is the fast path for normal
+            autocomplete. If no prefix matches are found (likely a typo), it falls back to
+            <strong>fuzzy matching</strong> via rapidfuzz's WRatio scorer, which handles
+            character transpositions, partial matches, and token reordering.
+        </p>
+        <p>
+            All {{ "{:,}".format(actor_count) }} actor names are loaded into memory at startup
+            (~10MB). Both search stages operate entirely in-memory with no database queries,
+            keeping autocomplete latency under 30ms.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Data Collection</h2>
+        <p>
+            TMDB's free API provides the actor data, headshots, and movie/TV cast lists that power
+            this app. Building the dataset involves several data sources, each with different coverage:
+        </p>
+        <ul>
+            <li><strong>Popular actors endpoint</strong> — the starting point, but caps at ~10k people
+                and skews toward currently trending actors.</li>
+            <li><strong>Credits crawling</strong> — fetching cast lists from top-rated movies and TV shows.
+                This is how we find character actors and supporting cast who would never appear on
+                the "popular" list.</li>
+            <li><strong>Discover endpoint crawling</strong> — systematically iterating through decades
+                of film and TV (1970–present), fetching the cast for every discovered title.
+                This is the broadest source and runs as a background process over multiple days.</li>
+        </ul>
+        <p>
+            TMDB's rate limit of 40 requests per 10 seconds means the crawler respects a careful
+            pace. Each movie requires one API call for credits, plus individual calls to download
+            headshots. The current dataset took multiple days of continuous crawling to build.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Frontend Architecture</h2>
+        <p>
+            The UI is server-rendered HTML with <strong>HTMX</strong> for interactivity —
+            no JavaScript framework, no build step, no client-side routing. When you click an actor
+            card, HTMX sends a request to the server, receives a rendered HTML fragment, and swaps
+            it into the page. The search input, tab switching, and autocomplete are vanilla JavaScript.
+        </p>
+        <p>
+            Browser history is managed via HTMX's <code>hx-push-url</code> attribute, which pushes
+            each search URL to the browser's history stack. The server detects whether a request
+            came from HTMX (partial page swap) or direct navigation (bookmark, back button) via
+            the <code>HX-Request</code> header and returns either a fragment or a full page accordingly.
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>Deployment</h2>
+        <p>
+            The app runs on <strong>Railway</strong> with a persistent volume for the SQLite database
+            and consolidated embedding index. The production deploy is lightweight — it doesn't include
+            PyTorch or the CLIP model, since those are only needed for generating embeddings (done locally).
+            The similarity search just loads the pre-computed numpy arrays.
+        </p>
+        <p>
+            On first deploy, the app downloads a ~200MB tarball from a GitHub Release containing
+            the database and consolidated embeddings. This self-populating approach means the
+            deployment is a single <code>git push</code> — no manual data transfer needed.
+        </p>
+        <h3>The inode lesson</h3>
+        <p>
+            Originally, each actor's embedding was stored as an individual <code>.npy</code> file —
+            180,000+ files totaling ~700MB. This worked locally but failed spectacularly on Railway,
+            which has inode limits on its volumes. The solution was consolidating all embeddings into
+            a single numpy array file (~200MB), bringing the file count from 180k down to 3
+            (database + embeddings array + ID mapping).
+        </p>
+    </section>
+
+    <section class="about-section">
+        <h2>What's next</h2>
+        <ul>
+            <li><strong>Photo upload search</strong> — skip the name entirely, upload a screenshot
+                from what you're watching and find similar actors directly. CLIP already embeds images,
+                so this is architecturally straightforward. The hard part will be implementing the image upload and processing pipeline. Would a simple drag-and-drop interface work? Totally. But if you want to snag a picture of your tv from across the room with your phone, it's a more complicated story.</li>
+            <li><strong>"Known for" labels</strong> — show 1-2 movie/TV titles under each result
+                so you can quickly identify where you've seen them.</li>
+            <li><strong>Larger dataset</strong> — the crawler is still running, systematically
+                expanding coverage across decades of film and television.</li>
+        </ul>
+    </section>
+
+    <p class="back-link">
+        <a href="/about">&larr; Back to About</a>
+    </p>
+
+</div>
+{% endblock %}

@@ -39,6 +39,10 @@
             <li><strong>TMDB API</strong> — actor data, headshots, and movie/show cast lists</li>
             <li>Deployed on <strong>Railway</strong></li>
         </ul>
+        <p>
+            Want the full breakdown? Check out the <a href="/technical">technical deep dive</a> for details
+            on the embedding pipeline, similarity search, deployment architecture, and lessons learned.
+        </p>
     </section>
 
     <section class="about-section">
@@ -80,6 +84,13 @@
             <strong>{{ "{:,}".format(embedding_count) }} searchable embeddings</strong>.
             Data is sourced from TMDB's popular actors endpoint, cast lists from top-rated movies and TV shows,
             and a background crawler that systematically discovers actors across decades of film and television.
+        </p>
+        <p>
+            Building this dataset is a slow, respectful process. TMDB generously provides free API access,
+            but their rate limits (40 requests per 10 seconds) mean collecting data on hundreds of thousands
+            of actors takes days of continuous crawling. The current dataset represents multiple days of
+            background processing — crawling credits from movies and TV shows spanning decades, downloading
+            headshots, and generating CLIP embeddings for each one.
         </p>
     </section>
 

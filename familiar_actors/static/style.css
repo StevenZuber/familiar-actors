@@ -158,6 +158,51 @@ header h1 {
     padding-left: 1.5rem;
 }
 
+.about-section h3 {
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.about-section pre {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    margin-bottom: 0.85rem;
+}
+
+.about-section code {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.85rem;
+    color: var(--text-link-hover);
+}
+
+.about-section p code {
+    background: var(--bg-base);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+}
+
+.back-link {
+    text-align: center;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+.back-link a {
+    color: var(--text-link);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.15s;
+}
+
+.back-link a:hover {
+    color: var(--text-link-hover);
+}
+
 /* Search tabs */
 .search-tabs {
     display: flex;
