@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Back face silhouette -->
+  <g transform="translate(8, 0)" opacity="0.4">
+    <!-- Head -->
+    <ellipse cx="24" cy="20" rx="12" ry="14" fill="#e0e0e0"/>
+    <!-- Shoulders -->
+    <path d="M4 58 Q4 42 24 38 Q44 42 44 58" fill="#e0e0e0"/>
+  </g>
+  <!-- Front face silhouette -->
+  <g transform="translate(-2, 2)">
+    <!-- Head -->
+    <ellipse cx="24" cy="20" rx="12" ry="14" fill="#ffffff"/>
+    <!-- Shoulders -->
+    <path d="M4 58 Q4 42 24 38 Q44 42 44 58" fill="#ffffff"/>
+  </g>
+</svg>
