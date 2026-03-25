@@ -148,3 +148,6 @@ cython_debug/
 data/
 
 .claude/
+
+# Plan files (local reference only)
+PLAN*.md
