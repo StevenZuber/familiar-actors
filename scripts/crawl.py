@@ -1,19 +1,76 @@
 """Background data crawler for Familiar Actors.
 
 Systematically crawls TMDB's discover endpoints to find actors across
-decades of film and TV. Designed to run for hours unattended.
+decades of film and TV. Designed to run for hours/days unattended.
 
-Usage:
+IMPORTANT: This script has TWO PHASES that run sequentially:
+
+  Phase 1: DISCOVER — Crawls TMDB's discover endpoints to find movies/TV shows,
+           fetches cast lists for each, and inserts actor metadata into the database.
+           This is fast (mostly small JSON responses) and adds actors as rows in the DB,
+           but does NOT download headshot images.
+
+  Phase 2: DOWNLOAD HEADSHOTS — After discovery is complete, downloads the primary
+           headshot image for every actor that doesn't have one yet. This is slower
+           (one image per actor, rate-limited) and can take a long time for large batches.
+
+  After both phases, you still need to run separately:
+    - `uv run familiar-actors embed` to generate CLIP embeddings from the headshots
+    - `uv run python scripts/consolidate_index.py` to rebuild the Railway deployment index
+
+FULL PIPELINE (end to end):
+    # 1. Crawl actors + download headshots (takes days)
     caffeinate -i uv run python scripts/crawl.py
-    caffeinate -i uv run python scripts/crawl.py --years 1990-2010 --pages 200
-    caffeinate -i uv run python scripts/crawl.py --source tv --years 2000-2026
 
+    # 2. Generate CLIP embeddings for all new headshots (takes hours)
+    caffeinate -i uv run familiar-actors embed
 
-    # Start fresh (delete resume state)
+    # 3. (Optional) Generate averaged embeddings from multiple photos per actor
+    caffeinate -i uv run familiar-actors fetch-images
+
+    # 4. Rebuild consolidated index for Railway deployment
+    uv run python scripts/consolidate_index.py
+
+    # 5. Check stats
+    uv run python scripts/crawl.py --stats
+
+CRAWLER USAGE:
+    # Crawl movies AND tv (default: both, 1970-2026)
+    caffeinate -i uv run python scripts/crawl.py
+
+    # Crawl only movies
+    caffeinate -i uv run python scripts/crawl.py --source movie
+
+    # Crawl only TV shows
+    caffeinate -i uv run python scripts/crawl.py --source tv
+
+    # Crawl a specific year range
+    caffeinate -i uv run python scripts/crawl.py --years 2000-2010
+
+    # Crawl actors only, skip headshot downloads (faster, metadata only)
+    caffeinate -i uv run python scripts/crawl.py --skip-headshots
+
+    # Deep crawl — use 5 different sort orders per year to find actors beyond
+    # the 500-page limit. ~5x more coverage, ~5x longer runtime.
+    # Sort orders: popularity, vote_count, revenue, release_date, vote_average
+    caffeinate -i uv run python scripts/crawl.py --deep
+
+    # Check database stats without crawling
+    uv run python scripts/crawl.py --stats
+
+    # Start fresh (delete resume state file)
     uv run python scripts/crawl.py --reset
 
-The script resumes from where it left off using a state file (data/crawl_state.json).
-Delete the state file to start fresh.
+RESUME BEHAVIOR:
+    The script saves progress to data/crawl_state.json after each page.
+    If interrupted (Ctrl+C, laptop sleep, crash), re-running the same command
+    picks up where it left off. Movie and TV crawls track progress independently.
+    Delete the state file (--reset) to start a crawl from scratch.
+
+RATE LIMITING:
+    TMDB allows 40 requests per 10 seconds. This script uses a concurrency
+    semaphore with delays to stay safely under that limit. If you hit 429
+    errors, the script backs off and retries automatically.
 """
 
 import argparse
@@ -48,8 +105,10 @@ logger = logging.getLogger(__name__)
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
 STATE_FILE = settings.data_dir / "crawl_state.json"
-MAX_CONCURRENT = 4
-RATE_LIMIT_DELAY = 0.3  # seconds between requests per slot
+MAX_CONCURRENT = 6
+RATE_LIMIT_DELAY = (
+    0.2  # seconds between requests per slot (~30 req/10s, under TMDB's 40/10s limit)
+)
 
 
 def get_headers() -> dict:
@@ -121,6 +180,15 @@ async def rate_limited_get(
     return None
 
 
+SORT_ORDERS = [
+    "popularity.desc",
+    "vote_count.desc",
+    "revenue.desc",
+    "primary_release_date.desc",
+    "vote_average.desc",
+]
+
+
 async def crawl_discover(
     source: str,
     year: int,
@@ -128,6 +196,7 @@ async def crawl_discover(
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
     session: Session,
+    sort_by: str = "popularity.desc",
 ) -> tuple[int, int]:
     """Crawl one page of discover results and fetch cast for each title.
 
@@ -137,7 +206,7 @@ async def crawl_discover(
     titles_processed = 0
 
     # Fetch discover page
-    params = {"page": page, "sort_by": "popularity.desc"}
+    params = {"page": page, "sort_by": sort_by}
     if source == "movie":
         params["primary_release_year"] = year
     else:
@@ -175,60 +244,91 @@ async def crawl_discover(
 
 
 async def run_discover_crawl(
-    source: str, start_year: int, end_year: int, max_pages: int
+    source: str,
+    start_year: int,
+    end_year: int,
+    max_pages: int,
+    deep: bool = False,
 ):
-    """Crawl TMDB discover endpoint across a range of years."""
+    """Crawl TMDB discover endpoint across a range of years.
+
+    In normal mode, uses popularity.desc sort only (up to 500 pages/year).
+    In deep mode, cycles through 5 different sort orders per year, effectively
+    multiplying coverage by up to 5x to get past TMDB's 500 page limit.
+    """
     headers = get_headers()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    state = load_state()
-    state_key = f"discover_{source}"
+    sort_orders = SORT_ORDERS if deep else ["popularity.desc"]
 
     total_new = 0
     total_titles = 0
     start_time = time.time()
 
-    # Resume from last position
-    last_year = state.get(state_key, {}).get("last_year", start_year)
-    last_page = state.get(state_key, {}).get("last_page", 0)
+    for sort_by in sort_orders:
+        state = load_state()
+        state_key = f"discover_{source}_{sort_by}"
 
-    logger.info(
-        f"Starting {source} discover crawl: years {last_year}-{end_year}, "
-        f"up to {max_pages} pages per year"
-    )
+        # Resume from last position for this sort order
+        last_year = state.get(state_key, {}).get("last_year", start_year)
+        last_page = state.get(state_key, {}).get("last_page", 0)
 
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        for year in range(last_year, end_year + 1):
-            start_page = last_page + 1 if year == last_year else 1
+        sort_label = sort_by.replace(".", " ").replace("_", " ")
+        logger.info(
+            f"Starting {source} discover crawl (sort: {sort_label}): "
+            f"years {last_year}-{end_year}, up to {max_pages} pages per year"
+        )
 
-            for page in range(start_page, max_pages + 1):
-                with Session(engine) as session:
-                    new, titles = await crawl_discover(
-                        source, year, page, client, semaphore, session=session
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+            for year in range(last_year, end_year + 1):
+                start_page = last_page + 1 if year == last_year else 1
+
+                for page in range(start_page, max_pages + 1):
+                    with Session(engine) as session:
+                        new, titles = await crawl_discover(
+                            source,
+                            year,
+                            page,
+                            client,
+                            semaphore,
+                            session=session,
+                            sort_by=sort_by,
+                        )
+                    total_new += new
+                    total_titles += titles
+
+                    # Save state after each page
+                    if state_key not in state:
+                        state[state_key] = {}
+                    state[state_key]["last_year"] = year
+                    state[state_key]["last_page"] = page
+                    save_state(state)
+
+                    # No titles on this page = no more pages for this year
+                    if titles == 0:
+                        break
+
+                    elapsed = time.time() - start_time
+                    years_done = year - start_year + (page / max_pages)
+                    years_total = end_year - start_year + 1
+                    if years_done > 0:
+                        rate = elapsed / years_done
+                        remaining = (years_total - years_done) * rate
+                        hours, rem = divmod(int(remaining), 3600)
+                        mins = rem // 60
+                        eta = f"{hours}h {mins}m" if hours else f"{mins}m"
+                    else:
+                        eta = "calculating..."
+                    logger.info(
+                        f"[{source}/{sort_label}] Year {year}, page {page}: "
+                        f"+{new} new actors ({total_new} total new, "
+                        f"{total_titles} titles crawled, "
+                        f"{elapsed:.0f}s elapsed, ~{eta} remaining)"
                     )
-                total_new += new
-                total_titles += titles
 
-                # Save state after each page
-                if state_key not in state:
-                    state[state_key] = {}
-                state[state_key]["last_year"] = year
-                state[state_key]["last_page"] = page
-                save_state(state)
+                # Reset page counter for next year
+                last_page = 0
 
-                # No titles on this page = no more pages for this year
-                if titles == 0:
-                    break
-
-                elapsed = time.time() - start_time
-                logger.info(
-                    f"[{source}] Year {year}, page {page}: "
-                    f"+{new} new actors ({total_new} total new, "
-                    f"{total_titles} titles crawled, "
-                    f"{elapsed:.0f}s elapsed)"
-                )
-
-            # Reset page counter for next year
-            last_page = 0
+        logger.info(f"Completed sort order: {sort_label}")
 
     elapsed = time.time() - start_time
     logger.info(
@@ -282,9 +382,14 @@ async def download_new_headshots():
             downloaded += 1
             if downloaded % 100 == 0:
                 elapsed = time.time() - start_time
+                rate = downloaded / elapsed if elapsed > 0 else 0
+                remaining = (len(actors) - downloaded) / rate if rate > 0 else 0
+                hours, rem = divmod(int(remaining), 3600)
+                mins = rem // 60
+                eta = f"{hours}h {mins}m" if hours else f"{mins}m"
                 logger.info(
                     f"Downloaded {downloaded}/{len(actors)} headshots "
-                    f"({elapsed:.0f}s elapsed)"
+                    f"({elapsed:.0f}s elapsed, ~{eta} remaining)"
                 )
 
     logger.info(f"Downloaded {downloaded} headshots")
@@ -329,6 +434,11 @@ def main():
         help="Max pages per year (default: 500, TMDB max)",
     )
     parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Cycle through 5 sort orders per year to find more actors beyond the 500-page limit",
+    )
+    parser.add_argument(
         "--skip-headshots",
         action="store_true",
         help="Skip headshot downloads (just crawl actors)",
@@ -364,7 +474,9 @@ def main():
     # Crawl discover endpoints
     sources = ["movie", "tv"] if args.source == "both" else [args.source]
     for source in sources:
-        asyncio.run(run_discover_crawl(source, start_year, end_year, args.pages))
+        asyncio.run(
+            run_discover_crawl(source, start_year, end_year, args.pages, deep=args.deep)
+        )
 
     # Download headshots
     if not args.skip_headshots:

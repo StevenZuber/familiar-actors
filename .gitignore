@@ -151,3 +151,6 @@ data/
 
 # Plan files (local reference only)
 PLAN*.md
+
+#tar files
+*.tar.gz
