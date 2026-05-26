@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import numpy as np
 from sqlmodel import Session, select
@@ -8,12 +9,13 @@ from familiar_actors.models import Actor
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded model singleton
-_model = None
-_preprocess = None
+# Lazy-loaded model singleton. Typed Any because open-clip lacks stubs and
+# the model/preprocess callable types aren't visible to the type checker.
+_model: Any = None
+_preprocess: Any = None
 
 
-def _get_model():
+def _get_model() -> tuple[Any, Any]:
     global _model, _preprocess
     if _model is None:
         try:
@@ -23,7 +25,6 @@ def _get_model():
                 "open-clip-torch is not installed. "
                 "Install the pipeline dependencies: uv sync --group pipeline"
             )
-        import torch  # noqa: F811
 
         logger.info(
             f"Loading CLIP model {settings.embedding_model} "
@@ -107,14 +108,50 @@ def process_all_embeddings(session: Session) -> int:
     return processed
 
 
-def process_multi_photo_embeddings(session: Session) -> int:
-    """Generate averaged CLIP embeddings from multiple photos per actor.
+def generate_avg_embedding(actor: Actor, session: Session) -> bool:
+    """Generate and save the averaged CLIP embedding for one actor.
 
-    For each actor with photos in data/headshots_multi/{tmdb_id}/, generates
-    a CLIP embedding for each photo, L2-normalizes them so each contributes
-    equally, averages, and re-normalizes. The result is a single embedding
-    that represents the actor's general appearance more stably than any
-    single photo. Saves to data/embeddings_avg/{tmdb_id}.npy.
+    Reads photos from data/headshots_multi/{tmdb_id}/, generates a CLIP
+    embedding per photo, L2-normalizes each so they contribute equally,
+    averages, re-normalizes, and saves to data/embeddings_avg/{tmdb_id}.npy.
+    Sets actor.clip_avg_embedding_path and commits the session. Returns
+    True iff an embedding was written.
+    """
+    actor_photo_dir = settings.headshots_multi_dir / str(actor.tmdb_id)
+    if not actor_photo_dir.exists():
+        return False
+
+    photos = sorted(actor_photo_dir.glob("*.jpg"))
+    if not photos:
+        return False
+
+    embeddings = []
+    for photo in photos:
+        emb = generate_embedding(str(photo))
+        if emb is not None:
+            embeddings.append(emb)
+
+    if not embeddings:
+        return False
+
+    normalized = [emb / np.linalg.norm(emb) for emb in embeddings]
+    avg = np.mean(normalized, axis=0)
+    avg = avg / np.linalg.norm(avg)
+
+    avg_path = settings.embeddings_avg_dir / f"{actor.tmdb_id}.npy"
+    np.save(avg_path, avg)
+
+    actor.clip_avg_embedding_path = str(avg_path)
+    session.add(actor)
+    session.commit()
+    return True
+
+
+def process_multi_photo_embeddings(session: Session) -> int:
+    """Generate averaged CLIP embeddings for every actor missing one.
+
+    Iterates actors with photos in data/headshots_multi/{tmdb_id}/ but no
+    clip_avg_embedding_path set, and calls generate_avg_embedding for each.
     Skips actors already processed. Safe to interrupt and resume.
     """
     actors = session.exec(
@@ -131,39 +168,10 @@ def process_multi_photo_embeddings(session: Session) -> int:
     processed = 0
 
     for actor in actors:
-        actor_photo_dir = settings.headshots_multi_dir / str(actor.tmdb_id)
-        if not actor_photo_dir.exists():
-            continue
-
-        photos = sorted(actor_photo_dir.glob("*.jpg"))
-        if not photos:
-            continue
-
-        # Generate embeddings for each photo
-        embeddings = []
-        for photo in photos:
-            emb = generate_embedding(str(photo))
-            if emb is not None:
-                embeddings.append(emb)
-
-        if not embeddings:
-            continue
-
-        # L2-normalize each, average, re-normalize
-        normalized = [emb / np.linalg.norm(emb) for emb in embeddings]
-        avg = np.mean(normalized, axis=0)
-        avg = avg / np.linalg.norm(avg)
-
-        avg_path = settings.embeddings_avg_dir / f"{actor.tmdb_id}.npy"
-        np.save(avg_path, avg)
-
-        actor.clip_avg_embedding_path = str(avg_path)
-        session.add(actor)
-        session.commit()
-        processed += 1
-
-        if processed % 25 == 0:
-            logger.info(f"Generated {processed} averaged embeddings")
+        if generate_avg_embedding(actor, session):
+            processed += 1
+            if processed % 25 == 0:
+                logger.info(f"Generated {processed} averaged embeddings")
 
     logger.info(f"Generated {processed} averaged embeddings total")
     return processed

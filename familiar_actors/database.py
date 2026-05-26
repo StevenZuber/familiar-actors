@@ -42,6 +42,15 @@ def _run_migrations():
             conn.execute(
                 text("ALTER TABLE actor ADD COLUMN clip_avg_embedding_path TEXT")
             )
+    if "multi_photo_unavailable" not in existing_columns:
+        logger.info("Migrating: adding multi_photo_unavailable column to actor table")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE actor ADD COLUMN multi_photo_unavailable "
+                    "BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
 
 
 def get_session():

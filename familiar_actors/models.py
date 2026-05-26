@@ -9,6 +9,9 @@ class Actor(SQLModel, table=True):
     clip_embedding_path: str | None = None
     clip_avg_embedding_path: str | None = None
     tmdb_image_url: str | None = None
+    # Set when TMDB returned no profile images meeting min_image_width — keeps
+    # us from re-querying /person/{id}/images for the same dead-end every run.
+    multi_photo_unavailable: bool = Field(default=False)
 
 
 class ActorResult(SQLModel):

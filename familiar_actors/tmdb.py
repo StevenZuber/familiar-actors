@@ -5,6 +5,7 @@ import httpx
 from sqlmodel import Session, select
 
 from familiar_actors.config import settings
+from familiar_actors.embeddings import generate_avg_embedding
 from familiar_actors.models import Actor
 
 logger = logging.getLogger(__name__)
@@ -226,82 +227,111 @@ class TMDBClient:
 
         Returns a list of profile dicts with file_path, width, height, vote_average, etc.
         These are community-uploaded portrait headshots, not on-set or group photos.
+        Retries once on a malformed/empty body — TMDB occasionally returns 200 OK
+        with a payload that fails JSON decode under sustained load.
         """
-        response = await client.get(
-            f"{TMDB_BASE_URL}/person/{tmdb_id}/images",
-        )
-        response.raise_for_status()
-        return response.json().get("profiles", [])
+        url = f"{TMDB_BASE_URL}/person/{tmdb_id}/images"
+        for attempt in (1, 2):
+            response = await client.get(url)
+            response.raise_for_status()
+            try:
+                return response.json().get("profiles", [])
+            except ValueError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(1.0)
+        return []
 
     async def download_multi_headshots(self, session: Session) -> int:
-        """Download multiple headshots per actor for embedding averaging.
+        """Download multi-photos and generate the averaged embedding per actor.
 
-        For each actor without an averaged embedding, fetches their profile images
-        from TMDB, filters by minimum resolution, takes the top N by community
-        vote_average, and downloads them to data/headshots_multi/{tmdb_id}/.
-        Skips actors already processed. Safe to interrupt and resume.
+        For each actor without an averaged embedding: if their photo dir is
+        empty, fetches profile images from TMDB (filtered by min resolution,
+        top-N by community vote_average) and downloads them to
+        data/headshots_multi/{tmdb_id}/. Then immediately generates and saves
+        the averaged CLIP embedding so progress is durable per actor. On
+        restart, actors whose photos already exist skip the API call entirely
+        and go straight to embedding. Safe to interrupt and resume.
         """
         actors = session.exec(
             select(Actor).where(
                 Actor.clip_avg_embedding_path.is_(None),  # type: ignore[union-attr]
                 Actor.tmdb_id.isnot(None),  # type: ignore[union-attr]
+                Actor.multi_photo_unavailable.is_(False),  # type: ignore[union-attr]
             )
         ).all()
 
         if not actors:
-            logger.info("No actors need multi-photo downloads")
+            logger.info("No actors need multi-photo processing")
             return 0
 
         settings.headshots_multi_dir.mkdir(parents=True, exist_ok=True)
+        settings.embeddings_avg_dir.mkdir(parents=True, exist_ok=True)
         processed = 0
         image_base = f"https://image.tmdb.org/t/p/{settings.multi_image_size}"
 
         async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
             for actor in actors:
+                actor_dir = settings.headshots_multi_dir / str(actor.tmdb_id)
+                existing_photos = (
+                    list(actor_dir.glob("*.jpg")) if actor_dir.exists() else []
+                )
+
                 try:
-                    profiles = await self.fetch_person_images(actor.tmdb_id, client)
-
-                    # Filter by minimum width, sort by vote_average, take top N
-                    profiles = [
-                        p
-                        for p in profiles
-                        if p.get("width", 0) >= settings.min_image_width
-                    ]
-                    profiles.sort(key=lambda p: p.get("vote_average", 0), reverse=True)
-                    profiles = profiles[: settings.max_photos_per_actor]
-
-                    if not profiles:
-                        continue
-
-                    actor_dir = settings.headshots_multi_dir / str(actor.tmdb_id)
-                    actor_dir.mkdir(parents=True, exist_ok=True)
-
-                    for i, profile in enumerate(profiles):
-                        image_path = actor_dir / f"{i}.jpg"
-                        if image_path.exists():
-                            continue
-                        img_response = await client.get(
-                            f"{image_base}{profile['file_path']}"
+                    if not existing_photos:
+                        profiles = await self.fetch_person_images(actor.tmdb_id, client)
+                        profiles = [
+                            p
+                            for p in profiles
+                            if p.get("width", 0) >= settings.min_image_width
+                        ]
+                        profiles.sort(
+                            key=lambda p: p.get("vote_average", 0), reverse=True
                         )
-                        img_response.raise_for_status()
-                        image_path.write_bytes(img_response.content)
+                        profiles = profiles[: settings.max_photos_per_actor]
 
+                        if not profiles:
+                            # Negative-cache so we don't re-query this actor
+                            # on every restart.
+                            actor.multi_photo_unavailable = True
+                            session.add(actor)
+                            session.commit()
+                            await asyncio.sleep(0.25)
+                            continue
+
+                        actor_dir.mkdir(parents=True, exist_ok=True)
+                        for i, profile in enumerate(profiles):
+                            image_path = actor_dir / f"{i}.jpg"
+                            if image_path.exists():
+                                continue
+                            img_response = await client.get(
+                                f"{image_base}{profile['file_path']}"
+                            )
+                            img_response.raise_for_status()
+                            image_path.write_bytes(img_response.content)
+
+                        # Respect TMDB rate limits (40 req/10s) — only when we
+                        # actually hit the API
+                        await asyncio.sleep(0.25)
+
+                except (httpx.HTTPError, ValueError) as e:
+                    # ValueError covers JSON decode failures — TMDB sometimes
+                    # returns 200 OK with a body that won't parse.
+                    logger.warning(
+                        f"Failed to fetch images for {actor.name} "
+                        f"(tmdb_id={actor.tmdb_id}): {type(e).__name__}: {e}"
+                    )
+                    continue
+
+                if generate_avg_embedding(actor, session):
                     processed += 1
                     if processed % 50 == 0:
                         logger.info(
-                            f"Downloaded multi-photos for {processed}/{len(actors)} actors"
+                            f"Processed {processed}/{len(actors)} actors "
+                            f"(photos + embedding)"
                         )
 
-                except httpx.HTTPError:
-                    logger.warning(
-                        f"Failed to fetch images for {actor.name} "
-                        f"(tmdb_id={actor.tmdb_id})"
-                    )
-
-                # Respect TMDB rate limits (40 req/10s)
-                await asyncio.sleep(0.25)
-
-        logger.info(f"Downloaded multi-photos for {processed} actors")
+        logger.info(f"Processed {processed} actors")
         return processed
 
     async def download_headshots(self, session: Session) -> int:

@@ -6,10 +6,7 @@ from sqlmodel import Session
 
 from familiar_actors.config import settings
 from familiar_actors.database import create_db_and_tables, engine
-from familiar_actors.embeddings import (
-    process_all_embeddings,
-    process_multi_photo_embeddings,
-)
+from familiar_actors.embeddings import process_all_embeddings
 from familiar_actors.tmdb import TMDBClient
 
 logging.basicConfig(
@@ -89,7 +86,8 @@ def fetch_images():
 
     Fetches the top-rated profile images from TMDB for each actor, generates
     CLIP embeddings for each, and averages them into a single stronger embedding.
-    Incremental — skips actors already processed. Safe to interrupt and resume.
+    Photos and embedding are processed together per-actor so progress is durable
+    on interrupt — actors whose photos already exist skip the API call on resume.
     """
     create_db_and_tables()
     settings.headshots_multi_dir.mkdir(parents=True, exist_ok=True)
@@ -98,13 +96,9 @@ def fetch_images():
     client = TMDBClient()
 
     with Session(engine) as session:
-        logger.info("Downloading multi-photos from TMDB...")
-        downloaded = asyncio.run(client.download_multi_headshots(session))
-        logger.info(f"Downloaded multi-photos for {downloaded} actors")
-
-        logger.info("Generating averaged embeddings...")
-        processed = process_multi_photo_embeddings(session)
-        logger.info(f"Generated {processed} averaged embeddings")
+        logger.info("Fetching multi-photos and generating averaged embeddings...")
+        processed = asyncio.run(client.download_multi_headshots(session))
+        logger.info(f"Processed {processed} actors")
 
 
 def build(num_pages: int = 25):
