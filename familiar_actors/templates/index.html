@@ -5,6 +5,7 @@
     <div class="search-tabs">
         <button class="search-tab active" data-mode="actor">Actor</button>
         <button class="search-tab" data-mode="title">Movie / Show</button>
+        <button class="search-tab" data-mode="photo">Photo</button>
     </div>
     <div class="search-wrapper">
         <input
@@ -15,6 +16,7 @@
         >
         <div id="suggestions" class="suggestions"></div>
     </div>
+    {% include "_photo_upload.html" %}
 </div>
 
 <div id="results"></div>

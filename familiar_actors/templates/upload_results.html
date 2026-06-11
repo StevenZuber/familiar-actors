@@ -1,0 +1,14 @@
+<div class="results-section">
+    {% if error %}
+    <p class="no-results">{{ error }}</p>
+    {% elif results %}
+    <div class="query-actor">
+        <div>
+            <h2>Actors who look like your photo</h2>
+        </div>
+    </div>
+    {% include "_results_grid.html" %}
+    {% else %}
+    <p class="no-results">No matches found. Try a clearer, front-facing photo.</p>
+    {% endif %}
+</div>

@@ -1,10 +1,23 @@
-from fastapi import APIRouter, Depends, Query, Request
+import io
+import logging
+
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from familiar_actors.database import get_session
 from familiar_actors.models import Actor, ActorResult
+from familiar_actors.query_embedding import QueryEmbeddingUnavailable, embed_image
 from familiar_actors.tmdb import TMDBClient
+
+# iPhones (the main audience) upload HEIC when the client-side JPEG
+# conversion doesn't run; this teaches Pillow to open it.
+register_heif_opener()
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -141,6 +154,59 @@ async def search_page(
         }
     )
     return tmpl.TemplateResponse("full_page.html", context)
+
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+@router.post("/upload")
+async def upload_search(
+    request: Request,
+    photo: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    """Match an uploaded photo against the actor index.
+
+    The photo is processed entirely in memory and never written to disk.
+    Always returns the upload_results.html partial — errors render as a
+    friendly message in place of the results grid.
+    """
+    tmpl = get_templates()
+    similarity_index = get_index()
+
+    def error_response(message: str, status_code: int):
+        return tmpl.TemplateResponse(
+            "upload_results.html",
+            {"request": request, "error": message, "results": []},
+            status_code=status_code,
+        )
+
+    data = await photo.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        return error_response("That photo is too large. Try one under 10MB.", 413)
+
+    try:
+        image = Image.open(io.BytesIO(data))
+        image = ImageOps.exif_transpose(image).convert("RGB")
+    except (UnidentifiedImageError, OSError):
+        return error_response(
+            "We couldn't read that file as an image. Try a JPEG or PNG.", 422
+        )
+
+    try:
+        # CPU-bound ONNX inference (~100ms+) — keep it off the event loop.
+        embedding = await run_in_threadpool(embed_image, image)
+    except QueryEmbeddingUnavailable as e:
+        logger.warning(f"Photo search unavailable: {e}")
+        return error_response(
+            "Photo search isn't available right now. Try searching by name.", 503
+        )
+
+    results = similarity_index.search_by_vector(embedding, session)
+    return tmpl.TemplateResponse(
+        "upload_results.html",
+        {"request": request, "results": results, "error": None},
+    )
 
 
 @router.get("/api/search-titles")

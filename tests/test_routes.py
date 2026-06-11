@@ -177,6 +177,64 @@ class TestSearchTitlesAPI:
             assert results[0]["title"] == "Fight Club"
 
 
+def _jpeg_bytes(size=(64, 64)) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", size, color=(128, 64, 32)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+@pytest.mark.unit
+class TestUploadSearch:
+    def test_upload_returns_matches(self, client):
+        # Embedding identical to Tom Hanks's vector -> he should match first
+        with patch(
+            "familiar_actors.routes.search.embed_image",
+            return_value=np.array([1.0, 0.0, 0.0, 0.0]),
+        ):
+            response = client.post(
+                "/upload", files={"photo": ("photo.jpg", _jpeg_bytes(), "image/jpeg")}
+            )
+
+        assert response.status_code == 200
+        assert "Actors who look like your photo" in response.text
+        assert response.text.index("Tom Hanks") < response.text.index("Tom Cruise")
+
+    def test_upload_non_image_returns_friendly_error(self, client):
+        response = client.post(
+            "/upload", files={"photo": ("notes.txt", b"not an image", "text/plain")}
+        )
+        assert response.status_code == 422
+        assert "read that file as an image" in response.text
+
+    def test_upload_too_large_rejected(self, client):
+        from familiar_actors.routes import search as search_routes
+
+        big = b"x" * (search_routes.MAX_UPLOAD_BYTES + 1)
+        response = client.post(
+            "/upload", files={"photo": ("photo.jpg", big, "image/jpeg")}
+        )
+        assert response.status_code == 413
+        assert "too large" in response.text
+
+    def test_upload_when_encoder_unavailable_returns_503(self, client):
+        from familiar_actors.query_embedding import QueryEmbeddingUnavailable
+
+        with patch(
+            "familiar_actors.routes.search.embed_image",
+            side_effect=QueryEmbeddingUnavailable("no model"),
+        ):
+            response = client.post(
+                "/upload", files={"photo": ("photo.jpg", _jpeg_bytes(), "image/jpeg")}
+            )
+
+        assert response.status_code == 503
+        assert "available right now" in response.text
+
+
 @pytest.mark.unit
 class TestCastPage:
     def test_cast_page_renders(self, client):

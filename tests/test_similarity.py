@@ -120,6 +120,45 @@ class TestSimilarityIndex:
         index = SimilarityIndex()
         assert not index.is_loaded
 
+    def test_search_by_vector_returns_ranked_results(self, actors_with_embeddings):
+        session, _ = actors_with_embeddings
+        index = SimilarityIndex()
+        index.load(session)
+
+        # Query vector close to Actor A's embedding; unnormalized on purpose
+        results = index.search_by_vector(
+            np.array([2.0, 0.0, 0.0, 0.2]), session, top_n=3
+        )
+
+        assert [r.name for r in results] == ["Actor A", "Actor B", "Actor C"]
+        assert results[0].similarity_score > results[1].similarity_score
+
+    def test_search_by_vector_excludes_actor(self, actors_with_embeddings):
+        session, actors = actors_with_embeddings
+        index = SimilarityIndex()
+        index.load(session)
+
+        results = index.search_by_vector(
+            np.array([1.0, 0.0, 0.0, 0.1]),
+            session,
+            top_n=10,
+            exclude_actor_id=actors[0].id,
+        )
+
+        assert actors[0].id not in [r.id for r in results]
+        assert len(results) == 2
+
+    def test_search_by_vector_zero_vector_returns_empty(self, actors_with_embeddings):
+        session, _ = actors_with_embeddings
+        index = SimilarityIndex()
+        index.load(session)
+
+        assert index.search_by_vector(np.zeros(4), session) == []
+
+    def test_search_by_vector_on_empty_index_returns_empty(self, db_session):
+        index = SimilarityIndex()
+        assert index.search_by_vector(np.array([1.0, 0.0]), db_session) == []
+
     def test_load_consolidated_index(self, db_session, tmp_path):
         """Test loading from consolidated index files (the Railway code path)."""
         import json

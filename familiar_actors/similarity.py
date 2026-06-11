@@ -110,23 +110,45 @@ class SimilarityIndex:
         if not self.is_loaded or self.embeddings is None:
             return []
 
-        top_n = top_n or settings.similarity_top_n
-
         if actor_id not in self.actor_ids:
             return []
 
         idx = self.actor_ids.index(actor_id)
-        query_vec = self.embeddings[idx]
+        return self.search_by_vector(
+            self.embeddings[idx], session, top_n=top_n, exclude_actor_id=actor_id
+        )
 
-        # Cosine similarity (embeddings are pre-normalized)
+    def search_by_vector(
+        self,
+        query_vec: np.ndarray,
+        session: Session,
+        top_n: int | None = None,
+        exclude_actor_id: int | None = None,
+    ) -> list[ActorResult]:
+        """Find the actors most similar to an arbitrary embedding vector.
+
+        Used both for actor-to-actor search (with exclude_actor_id) and for
+        uploaded-photo search. The query vector is normalized here, so callers
+        can pass raw model output.
+        """
+        if not self.is_loaded or self.embeddings is None:
+            return []
+
+        top_n = top_n or settings.similarity_top_n
+
+        norm = np.linalg.norm(query_vec)
+        if norm == 0:
+            return []
+        query_vec = query_vec / norm
+
+        # Cosine similarity (index embeddings are pre-normalized)
         similarities = self.embeddings @ query_vec
 
-        # Get top N+1 (excluding self), then trim
         top_indices = np.argsort(similarities)[::-1]
 
         results = []
         for i in top_indices:
-            if self.actor_ids[i] == actor_id:
+            if self.actor_ids[i] == exclude_actor_id:
                 continue
             if len(results) >= top_n:
                 break

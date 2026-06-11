@@ -2,7 +2,7 @@
 
 Ever watch a show, think "that actor looks familiar," look them up, and realize it's not who you thought? Then you're stuck wondering — who *was* I thinking of?
 
-Familiar Actors solves this. Type in an actor's name and get back a list of actors who look similar to them, ranked by facial similarity.
+Familiar Actors solves this. Type in an actor's name — or upload a photo — and get back a list of actors who look similar, ranked by facial similarity.
 
 ## How it works
 
@@ -10,6 +10,8 @@ Familiar Actors solves this. Type in an actor's name and get back a list of acto
 2. Each headshot is processed through [OpenCLIP](https://github.com/mlfoundations/open_clip) (ViT-B-32) to generate an embedding — a numerical vector representing visual features
 3. When you search for an actor, their embedding is compared against all others using cosine similarity
 4. The most similar faces are returned, ranked by score
+
+You can also upload a photo (or take one on your phone) via the **Photo** tab. The photo is embedded on the fly with an ONNX export of the same encoder — processed in memory, never stored — and matched against the same index.
 
 ## Prerequisites
 
@@ -67,6 +69,13 @@ uv run familiar-actors fetch 500 && uv run familiar-actors fetch-credits 500 && 
 | `embed` | Generate CLIP embeddings for all unprocessed headshots |
 | `build [num_pages]` | Shortcut for `fetch` + `embed` |
 
+**Photo upload search** also needs the ONNX image encoder (a one-time export, requires the pipeline group):
+
+```bash
+uv sync --group pipeline
+uv run python scripts/export_onnx.py   # writes data/clip_image_encoder.onnx
+```
+
 ### Start the app
 
 ```bash
@@ -119,7 +128,6 @@ SELECT COUNT(*) FROM actor WHERE image_path IS NOT NULL AND clip_embedding_path 
 
 ### Search improvements
 
-- Search by photo upload — this is the killer feature. Skip the name entirely, upload a screenshot from whatever you're watching, and find similar actors directly. CLIP makes this almost free since it already embeds images — you'd just embed the uploaded photo and search the same index.
 - "No good matches?" button — you mentioned this earlier. Could trigger a targeted crawl of movies the searched actor appeared in, expanding the pool in the exact direction that matters.
 
 ### Data quality

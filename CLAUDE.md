@@ -7,6 +7,7 @@ Familiar Actors — a face-similarity search demo. Type an actor's name, get bac
 - [familiar_actors/cli.py](familiar_actors/cli.py) — entry point, dispatches subcommands (`fetch`, `fetch-credits`, `fetch-images`, `embed`, `build`, `serve`).
 - [familiar_actors/tmdb.py](familiar_actors/tmdb.py) — async TMDB API client. Handles popular-actor pagination, credit crawling, multi-photo downloads.
 - [familiar_actors/embeddings.py](familiar_actors/embeddings.py) — OpenCLIP (ViT-B-32) embedding generation. Lazy-loads the model; `pipeline` dependency group required.
+- [familiar_actors/query_embedding.py](familiar_actors/query_embedding.py) — request-time embedding of uploaded photos via an ONNX export of the same encoder (onnxruntime, no torch). Preprocessing is replicated in PIL/numpy and must stay in sync with open_clip's transforms.
 - [familiar_actors/similarity.py](familiar_actors/similarity.py) — in-memory cosine-similarity index. Loaded once at app startup.
 - [familiar_actors/actor_search.py](familiar_actors/actor_search.py) — in-memory name index (prefix → rapidfuzz fallback).
 - [familiar_actors/app.py](familiar_actors/app.py) — FastAPI app, lifespan hooks, dataset bootstrap from a GitHub release.
@@ -16,6 +17,7 @@ Familiar Actors — a face-similarity search demo. Type an actor's name, get bac
 - [familiar_actors/config.py](familiar_actors/config.py) — pydantic-settings, `.env`-driven config.
 - [scripts/crawl.py](scripts/crawl.py) — long-running discovery crawler (separate from CLI commands).
 - [scripts/consolidate_index.py](scripts/consolidate_index.py) — builds `embeddings_index.npy` + `embeddings_ids.json` for deployment.
+- [scripts/export_onnx.py](scripts/export_onnx.py) — exports the CLIP image encoder to `data/clip_image_encoder.onnx` for photo-upload search, with a torch-vs-ONNX parity check. Re-run if `embedding_model`/`clip_pretrained` ever change.
 
 ## Data layout
 
@@ -27,6 +29,7 @@ All under `data/`:
 - `embeddings_clip/{tmdb_id}.npy` — single-photo 512-d embeddings.
 - `embeddings_avg/{tmdb_id}.npy` — averaged multi-photo embeddings (preferred when present).
 - `embeddings_index.npy` + `embeddings_ids.json` — consolidated index for deployment.
+- `clip_image_encoder.onnx` — ONNX export of the ViT-B-32 image encoder (~335MB), used by `/upload` photo search. Built by `scripts/export_onnx.py`; must ship in the release tarball.
 - `.data_size` — Content-Length of the last-downloaded release tarball; drives stale-dataset detection.
 
 The `Actor` row points at files via `image_path`, `clip_embedding_path`, `clip_avg_embedding_path`. `clip_avg_*` takes precedence over `clip_*` everywhere.
@@ -50,6 +53,7 @@ Rate limit: 40 req/10s on TMDB. `download_multi_headshots` sleeps 0.25s between 
 - Indices (`SimilarityIndex`, `ActorSearchIndex`) load once into memory and live on the app object.
 - Search index tries individual `.npy` files first (dev); falls back to the consolidated index (Railway/deployed).
 - Templates use Jinja2 + HTMX. `is_htmx_request()` decides partial vs full page.
+- `POST /upload` matches a user photo against the index: photos are embedded in memory with onnxruntime (never written to disk) and searched via `SimilarityIndex.search_by_vector`. The client (`search.js`) downscales/re-encodes to JPEG before upload — iPhone HEIC and EXIF rotation get normalized in the browser, with `pillow-heif` + `exif_transpose` as the server-side backstop.
 
 ## Conventions
 
@@ -68,3 +72,5 @@ Rate limit: 40 req/10s on TMDB. `download_multi_headshots` sleeps 0.25s between 
 - Railway, single service, `railway.json` present.
 - Production dataset ships as a GitHub release tarball; `DATA_RELEASE_URL` env var triggers download-on-boot.
 - Static dataset means a redeploy is needed to refresh actors. Stale-detection is by Content-Length, not hash.
+- The release tarball must include `clip_image_encoder.onnx` (alongside the DB and consolidated index) or `/upload` returns a 503 partial.
+- Build the tarball with [scripts/build_release.sh](scripts/build_release.sh) — it packages the four required files flat (the app extracts directly into `data/`) and fails loudly if any are missing. Upload the result as `data.tar.gz` on a `data-vN` GitHub release.
