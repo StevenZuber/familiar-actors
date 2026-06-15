@@ -1,0 +1,10 @@
+# Build-time mise config, honored by Railway's Railpack builder.
+#
+# Recent mise versions verify GitHub artifact attestations for the
+# python-build-standalone binaries by default, but those artifacts have no
+# published attestations — so `mise install` aborts with:
+#   "No GitHub artifact attestations found for python@3.12.8"
+# Disabling the check restores installs. The Python version itself still
+# comes from .python-version (3.12.8).
+[settings]
+python.github_attestations = false
