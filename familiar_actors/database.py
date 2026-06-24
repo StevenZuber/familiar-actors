@@ -51,6 +51,21 @@ def _run_migrations():
                     "BOOLEAN NOT NULL DEFAULT 0"
                 )
             )
+    if "facecrop_embedding_path" not in existing_columns:
+        logger.info("Migrating: adding facecrop_embedding_path column to actor table")
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE actor ADD COLUMN facecrop_embedding_path TEXT")
+            )
+    if "face_unavailable" not in existing_columns:
+        logger.info("Migrating: adding face_unavailable column to actor table")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE actor ADD COLUMN face_unavailable "
+                    "BOOLEAN NOT NULL DEFAULT 0"
+                )
+            )
 
 
 def get_session():

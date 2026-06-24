@@ -36,8 +36,7 @@ class SimilarityIndex:
         individual .npy files per actor if the consolidated files don't exist.
         L2-normalizes all embeddings for cosine similarity via dot product.
         """
-        index_path = settings.data_dir / "embeddings_index.npy"
-        ids_path = settings.data_dir / "embeddings_ids.json"
+        index_path, ids_path = settings.consolidated_index_paths()
 
         # Try individual .npy files first (local dev), fall back to
         # consolidated index (Railway where individual files aren't deployed)
@@ -63,18 +62,26 @@ class SimilarityIndex:
         logger.info(f"Loaded consolidated index: {self.embeddings.shape}")
 
     def _load_individual(self, session: Session) -> None:
-        """Fall back to loading individual .npy files per actor."""
-        actors = session.exec(
-            select(Actor).where(
-                or_(
-                    Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
-                    Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
-                )
+        """Fall back to loading individual .npy files per actor.
+
+        Loads whichever embedding space is live (settings.embedding_space):
+        "facecrop" reads facecrop_embedding_path; "clip" reads the averaged
+        embedding, falling back to the single-photo one.
+        """
+        facecrop = settings.embedding_space == "facecrop"
+        if facecrop:
+            condition = Actor.facecrop_embedding_path.isnot(None)  # type: ignore[union-attr]
+        else:
+            condition = or_(
+                Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
             )
-        ).all()
+        actors = session.exec(select(Actor).where(condition)).all()
 
         if not actors:
-            logger.warning("No actors with CLIP embeddings found")
+            logger.warning(
+                f"No actors with embeddings found for space '{settings.embedding_space}'"
+            )
             return
 
         ids = []
@@ -82,9 +89,12 @@ class SimilarityIndex:
 
         for actor in actors:
             try:
-                embedding_path = (
-                    actor.clip_avg_embedding_path or actor.clip_embedding_path
-                )
+                if facecrop:
+                    embedding_path = actor.facecrop_embedding_path
+                else:
+                    embedding_path = (
+                        actor.clip_avg_embedding_path or actor.clip_embedding_path
+                    )
                 if not embedding_path:
                     continue
                 embedding = np.load(embedding_path)

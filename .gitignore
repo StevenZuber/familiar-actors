@@ -152,5 +152,9 @@ data/
 # Plan files (local reference only)
 PLAN*.md
 
+# One-off spike / investigation artifacts (local reference only)
+scripts/spike_*.py
+spike_*.html
+
 #tar files
 *.tar.gz

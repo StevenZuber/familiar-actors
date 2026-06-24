@@ -8,7 +8,9 @@ from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
+from familiar_actors.config import settings
 from familiar_actors.database import get_session
+from familiar_actors.face_detect import detect_and_crop
 from familiar_actors.models import Actor, ActorResult
 from familiar_actors.query_embedding import QueryEmbeddingUnavailable, embed_image
 from familiar_actors.tmdb import TMDBClient
@@ -159,6 +161,22 @@ async def search_page(
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
+def _embed_query(image):
+    """Embed an uploaded photo in the live embedding space.
+
+    In the "facecrop" space the face is detected and cropped first (so the
+    query matches the face-crop index); returns None if no face is found. In
+    the "clip" space the whole image is embedded. Runs in a threadpool — both
+    detection and ONNX inference are CPU-bound.
+    """
+    if settings.embedding_space == "facecrop":
+        face = detect_and_crop(image)
+        if face is None:
+            return None
+        image = face
+    return embed_image(image)
+
+
 @router.post("/upload")
 async def upload_search(
     request: Request,
@@ -194,12 +212,18 @@ async def upload_search(
         )
 
     try:
-        # CPU-bound ONNX inference (~100ms+) — keep it off the event loop.
-        embedding = await run_in_threadpool(embed_image, image)
+        # CPU-bound detection + ONNX inference — keep it off the event loop.
+        embedding = await run_in_threadpool(_embed_query, image)
     except QueryEmbeddingUnavailable as e:
         logger.warning(f"Photo search unavailable: {e}")
         return error_response(
             "Photo search isn't available right now. Try searching by name.", 503
+        )
+
+    if embedding is None:
+        return error_response(
+            "We couldn't find a face in that photo. Try a clear, front-facing one.",
+            422,
         )
 
     results = similarity_index.search_by_vector(embedding, session)

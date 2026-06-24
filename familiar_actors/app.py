@@ -63,7 +63,7 @@ def _download_data_if_needed():
     if not settings.data_release_url:
         return
 
-    index_path = settings.data_dir / "embeddings_index.npy"
+    index_path, _ = settings.consolidated_index_paths()
     if index_path.exists() and not _is_data_stale():
         return
 

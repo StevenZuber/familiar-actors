@@ -13,6 +13,8 @@ Familiar Actors solves this. Type in an actor's name — or upload a photo — a
 
 You can also upload a photo (or take one on your phone) via the **Photo** tab. The photo is embedded on the fly with an ONNX export of the same encoder — processed in memory, never stored — and matched against the same index.
 
+To keep matches focused on the *face* rather than the background or wardrobe, the embedding pipeline can detect and crop to the face before running CLIP (the `facecrop` embedding space, selected by `EMBEDDING_SPACE`). A heavyweight detector (InsightFace SCRFD) is used offline when building the dataset; a tiny one (OpenCV YuNet) crops uploaded photos at request time — and the two produce near-identical CLIP embeddings (~0.99 cosine), so queries land in the same space as the stored faces.
+
 ## Prerequisites
 
 - **Python 3.12+**
@@ -88,6 +90,8 @@ Open <http://127.0.0.1:8000> and start searching.
 
 - **FastAPI** + **Jinja2** + **HTMX** — backend and server-rendered UI
 - **OpenCLIP** (ViT-B-32) — visual similarity embeddings
+- **onnxruntime** — runs the CLIP encoder for photo-upload search without shipping PyTorch to production
+- **InsightFace** (SCRFD, offline) + **OpenCV YuNet** (request-time) — face detection for the face-crop embedding space
 - **SQLModel** / SQLite — actor metadata
 - **numpy** — embedding storage and cosine similarity search
 - **httpx** — async TMDB API client

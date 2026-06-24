@@ -54,6 +54,26 @@ def embed():
         logger.info(f"Processed {processed} embeddings")
 
 
+def embed_facecrop(limit: int | None = None):
+    """Generate face-crop CLIP embeddings for all actors with headshots.
+
+    Detects + crops the face in each photo, then CLIP-embeds the crop (averaged
+    over multi-photos when present). Populates facecrop_embedding_path, a
+    separate embedding space from clip_* selected by settings.embedding_space.
+    Long-running over a full dataset; pass a limit to process a small batch.
+    Requires: uv sync --group pipeline --group face.
+    """
+    from familiar_actors.facecrop_embeddings import process_facecrop_embeddings
+
+    create_db_and_tables()
+    settings.facecrop_embeddings_dir.mkdir(parents=True, exist_ok=True)
+
+    with Session(engine) as session:
+        logger.info("Generating face-crop embeddings...")
+        processed = process_facecrop_embeddings(session, limit=limit)
+        logger.info(f"Processed {processed} face-crop embeddings")
+
+
 def fetch_credits(num_pages: int = 25, source: str = "movie"):
     """Fetch actors from movie/TV credits and download their headshots.
 
@@ -125,6 +145,7 @@ def main():
         "fetch-credits": fetch_credits,
         "fetch-images": fetch_images,
         "embed": embed,
+        "embed-facecrop": embed_facecrop,
         "build": build,
         "serve": serve,
     }
@@ -143,6 +164,9 @@ def main():
             "  fetch-images                   Download extra photos, generate averaged embeddings"
         )
         print("  embed                          Generate CLIP embeddings for headshots")
+        print(
+            "  embed-facecrop [limit]         Generate face-crop CLIP embeddings (detect+crop+CLIP)"
+        )
         print("  build [num_pages]              Run full pipeline (fetch + embed)")
         print("  serve                          Start the web server")
         sys.exit(1)
@@ -159,6 +183,8 @@ def main():
             else:
                 num_pages = int(arg)
         fetch_credits(num_pages=num_pages, source=source)
+    elif command == "embed-facecrop":
+        embed_facecrop(limit=int(args[0]) if args else None)
     elif args and command in ("fetch", "build"):
         commands[command](num_pages=int(args[0]))
     elif args and command == "serve":

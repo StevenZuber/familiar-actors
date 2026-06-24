@@ -30,6 +30,12 @@
             <li>When you search for an actor, their embedding is compared against all {{ "{:,}".format(embedding_count) }} others using <strong>cosine similarity</strong>.</li>
             <li>The most similar faces are returned, ranked by score.</li>
         </ol>
+        <p>
+            Don't have a name? Use the <strong>Photo</strong> tab to upload a picture (or snap one
+            on your phone) and search by face directly — the photo is embedded in memory and never stored.
+            See the <a href="/technical">technical deep dive</a> for how we crop to the face to keep
+            matches focused on the person rather than the background.
+        </p>
     </section>
 
     <section class="about-section">
@@ -39,6 +45,8 @@
             <li><strong>OpenCLIP</strong> (ViT-B-32) — visual similarity embeddings from OpenAI's CLIP model</li>
             <li><strong>SQLModel</strong> / SQLite — actor metadata storage</li>
             <li><strong>numpy</strong> — in-memory cosine similarity search across 100k+ embeddings</li>
+            <li><strong>onnxruntime</strong> — runs the CLIP encoder for uploaded-photo search without shipping PyTorch to production</li>
+            <li><strong>InsightFace</strong> &amp; <strong>OpenCV YuNet</strong> — face detection for cropping headshots and uploads to the face</li>
             <li><strong>rapidfuzz</strong> — typo-tolerant actor name search</li>
             <li><strong>TMDB API</strong> — actor data, headshots, and movie/show cast lists</li>
             <li>Deployed on <strong>Railway</strong></li>
@@ -73,6 +81,17 @@
                 <strong>TV cast discovery.</strong> We found that TMDB's regular credits endpoint only
                 returns 4 actors for The Office (not even Steve Carell!). Switching to the aggregate_credits
                 endpoint returned all 691 cast members across every season.
+            </li>
+            <li>
+                <strong>Revisiting face models — and a better fix.</strong> Tempted again by purpose-built
+                face-recognition models, we ran a rigorous bake-off before committing to anything. ArcFace
+                rated famous lookalike pairs (Amy Adams / Isla Fisher, Mark Wahlberg / Matt Damon) at
+                roughly 0.1–0.3, while CLIP rated the same pairs 0.77–0.94. Verification models are built
+                to tell people <em>apart</em>, not to judge resemblance, so they're the wrong tool no matter
+                how good they are. The real culprit behind CLIP's odd matches turned out to be background
+                and clothing leaking into the similarity — so instead of switching models, we now detect
+                each face and crop to it before embedding, keeping CLIP's strength while removing the
+                distractions. Uploaded photos get the same treatment.
             </li>
         </ul>
     </section>

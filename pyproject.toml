@@ -21,12 +21,16 @@ dependencies = [
     "rapidfuzz>=3.14.3",
     "onnxruntime>=1.20.0",
     "python-multipart>=0.0.18",
+    "opencv-python-headless>=4.13.0.92",
 ]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.2.0",
     "pytest>=8.2.0",
+]
+face = [
+    "insightface>=1.0.1",
 ]
 pipeline = [
     "open-clip-torch>=2.26.0",

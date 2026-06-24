@@ -45,6 +45,32 @@
             The math: L2-normalize each embedding so every photo contributes equally, compute the
             element-wise mean, then re-normalize the result back to the unit sphere.
         </p>
+        <h3>Cropping to the face</h3>
+        <p>
+            Before reaching for a fancier model, we re-tested whether a purpose-built face-recognition
+            model would beat CLIP. It didn't — and the numbers were stark. <strong>ArcFace</strong> rated
+            famous lookalike pairs (Amy Adams / Isla Fisher, Mark Wahlberg / Matt Damon) at roughly
+            0.1–0.3, basically indistinguishable from two random strangers, while CLIP rated the same
+            pairs 0.77–0.94. Face-recognition models are trained to tell identities <em>apart</em>, so
+            two different people who happen to look alike are pushed just as far apart as two who don't.
+            They're superb at "is this the same person" and useless at "who looks similar."
+        </p>
+        <p>
+            The real weakness in CLIP's misses was different: because it embeds the <em>whole</em> image,
+            backgrounds, clothing, and lighting leak into the "similarity." The fix keeps CLIP but feeds
+            it just the face — a detector finds the head, we crop with a little padding so hair and jaw
+            stay in frame (they matter for perceived likeness), and CLIP embeds the crop. On clean
+            headshots it changes little; on messier photos, and especially on user-uploaded pictures,
+            it's a clear win.
+        </p>
+        <p>
+            Two detectors share the work. Offline, when building the dataset, we use the heavier and very
+            accurate <strong>InsightFace SCRFD</strong>. At request time — when you upload a photo — we use
+            <strong>OpenCV's YuNet</strong>, a ~230KB model that keeps the server lightweight (no PyTorch
+            needed). They produce near-identical crops: the resulting CLIP embeddings agree to about
+            0.99 cosine, which matters because an uploaded photo has to land in the same space as the
+            pre-computed faces it's being compared against.
+        </p>
     </section>
 
     <section class="about-section">
@@ -211,9 +237,10 @@ Headshots (raw images) → fed into CLIP → Individual Embeddings
             The similarity search just loads the pre-computed numpy arrays.
         </p>
         <p>
-            On first deploy, the app downloads a ~200MB tarball from a GitHub Release containing
-            the database and consolidated embeddings. This self-populating approach means the
-            deployment is a single <code>git push</code> — no manual data transfer needed.
+            On first deploy, the app downloads a tarball (~1GB) from a GitHub Release containing
+            the database, the consolidated embedding index, and the ONNX CLIP encoder used for
+            photo-upload search. This self-populating approach means the deployment is a single
+            <code>git push</code> — no manual data transfer needed.
         </p>
         <h3>The inode lesson</h3>
         <p>
@@ -226,15 +253,22 @@ Headshots (raw images) → fed into CLIP → Individual Embeddings
     </section>
 
     <section class="about-section">
+        <h2>Recently shipped</h2>
+        <ul>
+            <li><strong>Photo upload search.</strong> Skip the name entirely — upload a screenshot or
+                snap a photo on your phone. The image is downscaled in the browser (HEIC and rotation
+                normalized), embedded in memory with onnxruntime, and never written to disk.</li>
+            <li><strong>Face cropping.</strong> Detecting and cropping to the face before embedding,
+                so matches key on the person rather than the backdrop (see "Cropping to the face" above).</li>
+        </ul>
         <h2>What's next</h2>
         <ul>
-            <li><strong>Photo upload search</strong> — skip the name entirely, upload a screenshot
-                from what you're watching and find similar actors directly. CLIP already embeds images,
-                so this is architecturally straightforward. The hard part will be implementing the image upload and processing pipeline. Would a simple drag-and-drop interface work? Totally. But if you want to snag a picture of your tv from across the room with your phone, it's a more complicated story.</li>
             <li><strong>"Known for" labels</strong> — show 1-2 movie/TV titles under each result
                 so you can quickly identify where you've seen them.</li>
             <li><strong>Larger dataset</strong> — the crawler is still running, systematically
                 expanding coverage across decades of film and television.</li>
+            <li><strong>Better retrieval</strong> — a "none of these — show me more" control and
+                optional filters, for when the lookalike you have in mind is just outside the top results.</li>
         </ul>
     </section>
 

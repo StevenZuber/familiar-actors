@@ -159,6 +159,48 @@ class TestSimilarityIndex:
         index = SimilarityIndex()
         assert index.search_by_vector(np.array([1.0, 0.0]), db_session) == []
 
+    def test_load_facecrop_space(self, db_session, tmp_path, monkeypatch):
+        """With embedding_space='facecrop', the index loads facecrop vectors."""
+        from familiar_actors import similarity as sim
+
+        emb_dir = tmp_path / "facecrop"
+        emb_dir.mkdir()
+        for i, vec in enumerate([[1.0, 0.0], [0.0, 1.0]]):
+            p = emb_dir / f"{i}.npy"
+            np.save(p, np.array(vec))
+            db_session.add(
+                Actor(tmdb_id=i, name=f"Actor {i}", facecrop_embedding_path=str(p))
+            )
+        db_session.commit()
+
+        monkeypatch.setattr(sim.settings, "embedding_space", "facecrop")
+        index = SimilarityIndex()
+        index.load(db_session)
+
+        assert index.is_loaded
+        assert len(index.actor_ids) == 2
+
+    def test_clip_space_ignores_facecrop_only_actors(
+        self, db_session, tmp_path, monkeypatch
+    ):
+        """In the default 'clip' space, an actor with only a facecrop embedding
+        is not loaded — the spaces are kept separate."""
+        from familiar_actors import similarity as sim
+
+        p = tmp_path / "fc.npy"
+        np.save(p, np.array([1.0, 0.0]))
+        db_session.add(
+            Actor(tmdb_id=99, name="FaceOnly", facecrop_embedding_path=str(p))
+        )
+        db_session.commit()
+
+        monkeypatch.setattr(sim.settings, "embedding_space", "clip")
+        # Isolate data_dir so the real ./data consolidated index isn't picked up.
+        monkeypatch.setattr(sim.settings, "data_dir", tmp_path)
+        index = SimilarityIndex()
+        index.load(db_session)
+        assert not index.is_loaded
+
     def test_load_consolidated_index(self, db_session, tmp_path):
         """Test loading from consolidated index files (the Railway code path)."""
         import json
@@ -184,6 +226,11 @@ class TestSimilarityIndex:
         with patch("familiar_actors.similarity.settings") as mock_settings:
             mock_settings.data_dir = data_dir
             mock_settings.similarity_top_n = 10
+            mock_settings.embedding_space = "clip"
+            mock_settings.consolidated_index_paths.return_value = (
+                data_dir / "embeddings_index.npy",
+                data_dir / "embeddings_ids.json",
+            )
             index.load(db_session)
 
         assert index.is_loaded

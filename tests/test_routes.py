@@ -220,6 +220,47 @@ class TestUploadSearch:
         assert response.status_code == 413
         assert "too large" in response.text
 
+
+@pytest.mark.unit
+class TestUploadFacecropMode:
+    """Upload behaviour when the live embedding space is 'facecrop'."""
+
+    def test_no_face_returns_friendly_error(self, client, monkeypatch):
+        from familiar_actors.routes import search as s
+
+        monkeypatch.setattr(s.settings, "embedding_space", "facecrop")
+        monkeypatch.setattr(s, "detect_and_crop", lambda img: None)
+
+        response = client.post(
+            "/upload", files={"photo": ("p.jpg", _jpeg_bytes(), "image/jpeg")}
+        )
+        assert response.status_code == 422
+        assert "find a face" in response.text
+
+    def test_face_is_cropped_then_embedded(self, client, monkeypatch):
+        from PIL import Image
+
+        from familiar_actors.routes import search as s
+
+        calls = {}
+
+        def fake_crop(img):
+            calls["cropped"] = True
+            return Image.new("RGB", (64, 64))
+
+        monkeypatch.setattr(s.settings, "embedding_space", "facecrop")
+        monkeypatch.setattr(s, "detect_and_crop", fake_crop)
+        monkeypatch.setattr(
+            s, "embed_image", lambda img: np.array([1.0, 0.0, 0.0, 0.0])
+        )
+
+        response = client.post(
+            "/upload", files={"photo": ("p.jpg", _jpeg_bytes(), "image/jpeg")}
+        )
+        assert response.status_code == 200
+        assert calls.get("cropped") is True
+        assert "Tom Hanks" in response.text
+
     def test_upload_when_encoder_unavailable_returns_503(self, client):
         from familiar_actors.query_embedding import QueryEmbeddingUnavailable
 

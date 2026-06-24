@@ -1,13 +1,19 @@
 """Rebuild the consolidated embedding index files for Railway deployment.
 
-Reads all individual .npy embedding files, combines them into a single
-numpy array (embeddings_index.npy) and ID mapping (embeddings_ids.json).
-Run this after generating new embeddings to prepare for deployment.
+Reads all individual .npy embedding files for an embedding space, combines
+them into a single numpy array + ID mapping. Run after generating embeddings
+to prepare for deployment.
+
+The space defaults to settings.embedding_space; pass --space to override.
+Output filenames follow settings.consolidated_index_paths():
+  clip     -> embeddings_index.npy / embeddings_ids.json (legacy names)
+  facecrop -> facecrop_index.npy   / facecrop_ids.json
 
 Usage:
-    uv run python scripts/consolidate_index.py
+    uv run python scripts/consolidate_index.py [--space clip|facecrop]
 """
 
+import argparse
 import json
 import logging
 import sys
@@ -32,17 +38,28 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--space",
+        default=settings.embedding_space,
+        choices=["clip", "facecrop"],
+        help="Embedding space to consolidate (default: settings.embedding_space)",
+    )
+    args = parser.parse_args()
+    space = args.space
+    logger.info(f"Consolidating '{space}' embedding space")
+
     create_db_and_tables()
 
     with Session(engine) as session:
-        actors = session.exec(
-            select(Actor).where(
-                or_(
-                    Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
-                    Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
-                )
+        if space == "facecrop":
+            condition = Actor.facecrop_embedding_path.isnot(None)  # type: ignore[union-attr]
+        else:
+            condition = or_(
+                Actor.clip_avg_embedding_path.isnot(None),  # type: ignore[union-attr]
+                Actor.clip_embedding_path.isnot(None),  # type: ignore[union-attr]
             )
-        ).all()
+        actors = session.exec(select(Actor).where(condition)).all()
 
         ids = []
         vecs = []
@@ -50,7 +67,10 @@ def main():
 
         for actor in actors:
             try:
-                path = actor.clip_avg_embedding_path or actor.clip_embedding_path
+                if space == "facecrop":
+                    path = actor.facecrop_embedding_path
+                else:
+                    path = actor.clip_avg_embedding_path or actor.clip_embedding_path
                 if not path:
                     continue
                 emb = np.load(path)
@@ -62,12 +82,14 @@ def main():
         logger.info(f"Loaded {len(ids)} embeddings, {failed} failed")
 
     if not vecs:
-        logger.error("No embeddings found. Run 'familiar-actors embed' first.")
+        logger.error(
+            f"No '{space}' embeddings found. "
+            f"Run 'familiar-actors embed{'-facecrop' if space == 'facecrop' else ''}' first."
+        )
         return
 
     embeddings = np.array(vecs)
-    index_path = settings.data_dir / "embeddings_index.npy"
-    ids_path = settings.data_dir / "embeddings_ids.json"
+    index_path, ids_path = settings.consolidated_index_paths(space)
 
     np.save(index_path, embeddings)
     with open(ids_path, "w") as f:
