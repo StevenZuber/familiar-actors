@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     embedding_model: str = "ViT-B-32"
     clip_pretrained: str = "openai"
     similarity_top_n: int = 10
+    # Results at or above this cosine to one already shown are treated as the
+    # same person (a duplicate TMDB entry / near-identical photo) and skipped.
+    # Well above real lookalike scores (doppelgangers top out ~0.94).
+    dedup_similarity_threshold: float = 0.98
     multi_image_size: str = "w500"
     min_image_width: int = 500
     max_photos_per_actor: int = 5

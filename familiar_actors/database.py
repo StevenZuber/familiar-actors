@@ -66,6 +66,14 @@ def _run_migrations():
                     "BOOLEAN NOT NULL DEFAULT 0"
                 )
             )
+    if "gender" not in existing_columns:
+        logger.info("Migrating: adding gender column to actor table")
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE actor ADD COLUMN gender TEXT"))
+    if "age" not in existing_columns:
+        logger.info("Migrating: adding age column to actor table")
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE actor ADD COLUMN age INTEGER"))
 
 
 def get_session():

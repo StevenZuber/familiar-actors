@@ -21,9 +21,10 @@ def actors_with_embeddings(db_session, tmp_path):
     embeddings_dir = tmp_path / "embeddings"
     embeddings_dir.mkdir()
 
-    # Actor A and B have similar embeddings, C is different
+    # Actor A and B are similar (but below the 0.98 dedup threshold, like real
+    # different actors); C is different.
     vec_a = np.array([1.0, 0.0, 0.0, 0.1])
-    vec_b = np.array([0.95, 0.05, 0.0, 0.1])  # very similar to A
+    vec_b = np.array([0.8, 0.3, 0.0, 0.1])  # similar to A (~0.94 cosine)
     vec_c = np.array([0.0, 0.0, 1.0, 0.0])  # very different from A
 
     actors = []
@@ -158,6 +159,36 @@ class TestSimilarityIndex:
     def test_search_by_vector_on_empty_index_returns_empty(self, db_session):
         index = SimilarityIndex()
         assert index.search_by_vector(np.array([1.0, 0.0]), db_session) == []
+
+    def test_dedup_collapses_near_identical_results(self, db_session, tmp_path):
+        """Two actors with near-identical embeddings (a duplicate TMDB entry)
+        collapse to one result; a genuinely different actor still appears."""
+        emb_dir = tmp_path / "emb"
+        emb_dir.mkdir()
+        vecs = {
+            1: [1.0, 0.0, 0.0],
+            2: [0.999, 0.001, 0.0],  # ~identical to actor 1 -> duplicate
+            3: [0.0, 1.0, 0.0],  # distinct
+        }
+        for tid, v in vecs.items():
+            p = emb_dir / f"{tid}.npy"
+            np.save(p, np.array(v))
+            db_session.add(
+                Actor(tmdb_id=tid, name=f"A{tid}", clip_embedding_path=str(p))
+            )
+        db_session.commit()
+
+        index = SimilarityIndex()
+        index.load(db_session)
+        results = index.search_by_vector(
+            np.array([1.0, 0.0, 0.0]), db_session, top_n=10
+        )
+
+        names = [r.name for r in results]
+        # Only one of the near-identical pair (A1/A2) survives, plus A3.
+        assert ("A1" in names) ^ ("A2" in names)
+        assert "A3" in names
+        assert len(results) == 2
 
     def test_load_facecrop_space(self, db_session, tmp_path, monkeypatch):
         """With embedding_space='facecrop', the index loads facecrop vectors."""

@@ -14,9 +14,11 @@ The serving/upload path does NOT use this module — it embeds with onnxruntime.
 """
 
 import logging
+from collections import Counter
 from typing import Any
 
 import numpy as np
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from familiar_actors.config import settings
@@ -61,10 +63,10 @@ def _get_detector() -> Any:
             raise RuntimeError(
                 "insightface is not installed. Install: uv sync --group face"
             )
-        logger.info("Loading face detector (buffalo_l / SCRFD)...")
+        logger.info("Loading face detector + genderage (buffalo_l)...")
         _detector = FaceAnalysis(
             name="buffalo_l",
-            allowed_modules=["detection"],
+            allowed_modules=["detection", "genderage"],
             providers=["CPUExecutionProvider"],
         )
         _detector.prepare(ctx_id=-1, det_size=(640, 640))
@@ -72,33 +74,46 @@ def _get_detector() -> Any:
     return _detector
 
 
-def embed_facecrop(image_path: str) -> np.ndarray | None:
-    """CLIP-embed the largest detected face in one image. None if no face."""
+def _process_photo(
+    image_path: str, need_embedding: bool
+) -> tuple[np.ndarray | None, str | None, int | None]:
+    """Detect the largest face in one image and return (embedding, sex, age).
+
+    `sex` is "M"/"F" and `age` an int from the genderage model. `embedding` is
+    the CLIP face-crop vector, computed only when `need_embedding` (so the
+    gender/age backfill of already-embedded actors skips the CLIP cost). Any
+    element is None when unavailable (no face, or embedding not requested).
+    """
     try:
         import cv2  # type: ignore[import-untyped]
         import torch
         from PIL import Image
 
         detector = _get_detector()
-        model, preprocess = _get_clip()
 
         img = cv2.imread(image_path)
         if img is None:
-            return None
+            return None, None, None
         face = largest_face(detector.get(img))
         if face is None:
-            return None
-        crop = crop_to_face(img, face.bbox)
-        if crop.size == 0:
-            return None
+            return None, None, None
 
-        pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
-        with torch.no_grad():  # type: ignore[no-untyped-call]
-            emb = model.encode_image(preprocess(pil).unsqueeze(0))
-        return emb.squeeze().numpy()
+        sex = "M" if int(face.gender) == 1 else "F"
+        age = int(face.age)
+
+        embedding = None
+        if need_embedding:
+            crop = crop_to_face(img, face.bbox)
+            if crop.size > 0:
+                model, preprocess = _get_clip()
+                pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+                with torch.no_grad():  # type: ignore[no-untyped-call]
+                    emb = model.encode_image(preprocess(pil).unsqueeze(0))
+                embedding = emb.squeeze().numpy()
+        return embedding, sex, age
     except Exception as e:
-        logger.warning(f"Failed to face-embed {image_path}: {e}")
-        return None
+        logger.warning(f"Failed to process {image_path}: {e}")
+        return None, None, None
 
 
 def _photos_for(actor: Actor) -> list[str]:
@@ -114,58 +129,75 @@ def _photos_for(actor: Actor) -> list[str]:
 
 
 def generate_facecrop_embedding(actor: Actor, session: Session) -> bool:
-    """Compute and store one face-crop CLIP embedding for an actor.
+    """Process one actor's photos: face-crop embedding (if missing) + gender/age.
 
-    Averages the per-photo face-crop embeddings (L2-normalized so each photo
-    contributes equally), renormalizes, and saves to
-    data/embeddings_facecrop/{tmdb_id}.npy. Sets facecrop_embedding_path on
-    success, or face_unavailable when no photo yielded a detectable face.
-    Commits either way so progress is durable. Returns True iff an embedding
-    was written.
+    Detects the largest face in each photo. The face-crop embedding is the
+    L2-normalized average of the per-photo CLIP crops (computed only when the
+    actor has no facecrop_embedding_path yet — so re-running just backfills
+    gender/age on already-embedded actors). Gender is the majority vote and age
+    the mean across photos. Sets face_unavailable when no photo yielded a face.
+    Commits either way so progress is durable. Returns False only on no-face.
     """
-    photos = _photos_for(actor)
-    embeddings = []
-    for path in photos:
-        emb = embed_facecrop(path)
+    need_embedding = actor.facecrop_embedding_path is None
+
+    embeddings: list[np.ndarray] = []
+    sexes: list[str] = []
+    ages: list[int] = []
+    for path in _photos_for(actor):
+        emb, sex, age = _process_photo(path, need_embedding)
+        if sex is not None:
+            sexes.append(sex)
+            if age is not None:
+                ages.append(age)
         if emb is not None:
             embeddings.append(emb / np.linalg.norm(emb))
 
-    if not embeddings:
+    if not sexes:
+        # No face detected in any photo — flag and skip on future runs.
         actor.face_unavailable = True
         session.add(actor)
         session.commit()
         return False
 
-    avg = np.mean(embeddings, axis=0)
-    avg = avg / np.linalg.norm(avg)
+    actor.gender = Counter(sexes).most_common(1)[0][0]
+    if ages:
+        actor.age = int(round(sum(ages) / len(ages)))
 
-    out_path = settings.facecrop_embeddings_dir / f"{actor.tmdb_id}.npy"
-    np.save(out_path, avg)
+    if need_embedding and embeddings:
+        avg = np.mean(embeddings, axis=0)
+        avg = avg / np.linalg.norm(avg)
+        out_path = settings.facecrop_embeddings_dir / f"{actor.tmdb_id}.npy"
+        np.save(out_path, avg)
+        actor.facecrop_embedding_path = str(out_path)
 
-    actor.facecrop_embedding_path = str(out_path)
     session.add(actor)
     session.commit()
     return True
 
 
 def process_facecrop_embeddings(session: Session, limit: int | None = None) -> int:
-    """Generate face-crop embeddings for every actor that needs one.
+    """Generate face-crop embeddings + gender/age for every actor that needs it.
 
-    Targets actors with a headshot but no facecrop_embedding_path yet, skipping
-    those already flagged face_unavailable. Safe to interrupt and resume —
-    progress is committed per actor. `limit` caps the batch (for validation).
+    Targets actors with a headshot that either lack a facecrop_embedding_path
+    or lack a gender estimate (so actors embedded before genderage was added
+    get backfilled without recomputing their embedding). Skips actors already
+    flagged face_unavailable. Safe to interrupt and resume — committed per
+    actor. `limit` caps the batch (for validation).
     """
     query = select(Actor).where(
         Actor.image_path.isnot(None),  # type: ignore[union-attr]
-        Actor.facecrop_embedding_path.is_(None),  # type: ignore[union-attr]
         Actor.face_unavailable.is_(False),  # type: ignore[union-attr]
+        or_(
+            Actor.facecrop_embedding_path.is_(None),  # type: ignore[union-attr]
+            Actor.gender.is_(None),  # type: ignore[union-attr]
+        ),
     )
     if limit is not None:
         query = query.limit(limit)
     actors = session.exec(query).all()
 
     if not actors:
-        logger.info("No actors need face-crop embeddings")
+        logger.info("No actors need face-crop processing")
         return 0
 
     settings.facecrop_embeddings_dir.mkdir(parents=True, exist_ok=True)
@@ -179,9 +211,9 @@ def process_facecrop_embeddings(session: Session, limit: int | None = None) -> i
             no_face += 1
         if (i + 1) % 50 == 0:
             logger.info(
-                f"Face-crop embeddings: {i + 1}/{len(actors)} "
+                f"Face-crop processing: {i + 1}/{len(actors)} "
                 f"({processed} done, {no_face} no-face)"
             )
 
-    logger.info(f"Generated {processed} face-crop embeddings ({no_face} no-face)")
+    logger.info(f"Processed {processed} actors ({no_face} no-face)")
     return processed

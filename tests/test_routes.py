@@ -37,7 +37,8 @@ def seeded_db(db_engine, tmp_path):
         )
 
         emb_path_2 = embeddings_dir / "200.npy"
-        np.save(emb_path_2, np.array([0.9, 0.1, 0.0, 0.0]))
+        # Distinct from Tom Hanks (~0.71 cosine) — below the dedup threshold.
+        np.save(emb_path_2, np.array([0.7, 0.7, 0.0, 0.0]))
 
         session.add(
             Actor(
@@ -122,6 +123,25 @@ class TestSimilarActorsAPI:
         response = client.get("/api/similar/9999")
         assert response.status_code == 200
         assert response.json() == []
+
+
+@pytest.mark.unit
+class TestSearchPagination:
+    def test_show_more_button_when_page_full(self, client):
+        # One other embedded actor (Tom Cruise); limit=1 fills the page -> button.
+        response = client.get(
+            "/search?actor_id=1&limit=1", headers={"HX-Request": "true"}
+        )
+        assert response.status_code == 200
+        assert "Show more" in response.text
+        assert "limit=11" in response.text  # next page = limit + similarity_top_n
+
+    def test_no_show_more_when_results_under_limit(self, client):
+        response = client.get(
+            "/search?actor_id=1&limit=50", headers={"HX-Request": "true"}
+        )
+        assert response.status_code == 200
+        assert "Show more" not in response.text
 
 
 @pytest.mark.unit

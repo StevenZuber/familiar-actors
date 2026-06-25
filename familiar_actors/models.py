@@ -20,6 +20,11 @@ class Actor(SQLModel, table=True):
     # Set when no face could be detected in any of the actor's photos, so the
     # facecrop pipeline skips them on resume instead of re-detecting.
     face_unavailable: bool = Field(default=False)
+    # Estimated by the buffalo_l genderage model during the facecrop pass
+    # (majority gender, mean age across photos). Used only as optional search
+    # filters — they're estimates, not ground truth.
+    gender: str | None = None  # "M" | "F"
+    age: int | None = None
 
 
 class ActorResult(SQLModel):

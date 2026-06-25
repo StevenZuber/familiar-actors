@@ -12,6 +12,17 @@
 
     {% if results %}
     {% include "_results_grid.html" %}
+    {% if has_more %}
+    <div class="show-more-wrap">
+        <button class="show-more"
+                hx-get="/search?actor_id={{ actor.id }}&limit={{ next_limit }}"
+                hx-target="#results"
+                hx-swap="innerHTML"
+                hx-indicator="this">
+            Show more
+        </button>
+    </div>
+    {% endif %}
     {% else %}
     <p class="no-results">No similar actors found. The embedding index may need to be built.</p>
     {% endif %}

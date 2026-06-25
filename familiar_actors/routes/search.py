@@ -126,23 +126,39 @@ async def get_similar_actors(
     return similarity_index.search(actor_id, session)
 
 
+MAX_RESULTS = 100
+
+
 @router.get("/search")
 async def search_page(
     request: Request,
     actor_id: int = Query(...),
+    limit: int = Query(0),
     session: Session = Depends(get_session),
 ):
-    """Returns results partial for HTMX, or full page for direct navigation."""
+    """Returns results partial for HTMX, or full page for direct navigation.
+
+    `limit` drives "Show more": each click re-requests with a larger limit and
+    re-renders the (re-ranked, deduped) list. Capped at MAX_RESULTS.
+    """
     tmpl = get_templates()
     similarity_index = get_index()
 
+    if limit <= 0:
+        limit = settings.similarity_top_n
+    limit = min(limit, MAX_RESULTS)
+
     actor = session.get(Actor, actor_id)
-    results = similarity_index.search(actor_id, session)
+    results = similarity_index.search(actor_id, session, top_n=limit)
 
     context = {
         "request": request,
         "actor": actor,
         "results": results,
+        "limit": limit,
+        "next_limit": limit + settings.similarity_top_n,
+        # If we filled the page there are probably more; hide once we hit the cap.
+        "has_more": len(results) >= limit and limit < MAX_RESULTS,
     }
 
     if is_htmx_request(request):

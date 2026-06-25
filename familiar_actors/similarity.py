@@ -156,12 +156,21 @@ class SimilarityIndex:
 
         top_indices = np.argsort(similarities)[::-1]
 
+        dedup_threshold = settings.dedup_similarity_threshold
         results = []
+        selected_idx: list[int] = []
         for i in top_indices:
             if self.actor_ids[i] == exclude_actor_id:
                 continue
             if len(results) >= top_n:
                 break
+
+            # Skip near-duplicates of something already shown — almost always a
+            # duplicate TMDB person entry rather than a genuine lookalike.
+            if selected_idx:
+                dupe = self.embeddings[selected_idx] @ self.embeddings[i]
+                if np.any(dupe >= dedup_threshold):
+                    continue
 
             matched_actor = session.get(Actor, self.actor_ids[i])
             if matched_actor and matched_actor.id is not None:
@@ -174,5 +183,6 @@ class SimilarityIndex:
                         similarity_score=round(float(similarities[i]), 4),
                     )
                 )
+                selected_idx.append(int(i))
 
         return results

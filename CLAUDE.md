@@ -40,7 +40,7 @@ All under `data/`:
 - `clip_image_encoder.onnx` — ONNX CLIP image encoder; used by `/upload` in BOTH spaces (the facecrop query path runs it on the cropped face).
 - `familiar_actors/models/face_detection_yunet.onnx` — YuNet detector (in the repo, not `data/`); used at request time to crop uploaded photos.
 
-The `Actor` row points at files via `image_path`, `clip_embedding_path`, `clip_avg_embedding_path`, and `facecrop_embedding_path`. Within the `clip` space `clip_avg_*` takes precedence over `clip_*`. `settings.embedding_space` ("clip" | "facecrop", env `EMBEDDING_SPACE`) selects which space the index and upload path use; the two coexist for A/B + rollback. `face_unavailable` flags actors with no detectable face (skipped by the facecrop pipeline).
+The `Actor` row points at files via `image_path`, `clip_embedding_path`, `clip_avg_embedding_path`, and `facecrop_embedding_path`. Within the `clip` space `clip_avg_*` takes precedence over `clip_*`. `settings.embedding_space` ("clip" | "facecrop", env `EMBEDDING_SPACE`) selects which space the index and upload path use; the two coexist for A/B + rollback. `face_unavailable` flags actors with no detectable face (skipped by the facecrop pipeline). `gender` ("M"/"F") and `age` are estimates from buffalo_l's genderage model, computed during the facecrop pass — intended as optional search filters, not ground truth.
 
 ## Pipeline (build the dataset)
 
@@ -51,7 +51,7 @@ All steps are incremental — re-running skips already-processed work. Safe to i
 3. `fetch-images` — calls TMDB `/person/{id}/images`, filters by `min_image_width`, downloads top-N by `vote_average`. Then generates averaged embeddings. **Long-running**: hours for a real dataset.
 4. `embed` — single-photo CLIP embeddings for any actor that has a headshot but no embedding.
 5. `build [pages]` — shortcut for `fetch` + `embed` (not the full pipeline).
-6. `embed-facecrop [limit]` — face-crop CLIP embeddings (detect+crop+CLIP) for the `facecrop` space. Needs `uv sync --group pipeline --group face`. **Long-running** over a full dataset; resumable, commits per actor. Pass a `limit` to process a small batch.
+6. `embed-facecrop [limit]` — face-crop CLIP embeddings (detect+crop+CLIP) for the `facecrop` space, and gender/age estimates (buffalo_l genderage) in the same detection pass. Needs `uv sync --group pipeline --group face`. **Long-running** over a full dataset; resumable, commits per actor. Targets actors missing a facecrop embedding **or** a gender estimate, so a re-run backfills gender/age onto already-embedded actors without recomputing their embedding. Pass a `limit` to process a small batch.
 
 Rate limit: 40 req/10s on TMDB. `download_multi_headshots` sleeps 0.25s between actors to stay polite.
 
@@ -64,6 +64,7 @@ Rate limit: 40 req/10s on TMDB. `download_multi_headshots` sleeps 0.25s between 
 - Templates use Jinja2 + HTMX. `is_htmx_request()` decides partial vs full page.
 - `POST /upload` matches a user photo against the index: photos are embedded in memory with onnxruntime (never written to disk) and searched via `SimilarityIndex.search_by_vector`. The client (`search.js`) downscales/re-encodes to JPEG before upload — iPhone HEIC and EXIF rotation get normalized in the browser, with `pillow-heif` + `exif_transpose` as the server-side backstop.
 - In the `facecrop` space, `/upload` first detects+crops the face (YuNet) before CLIP; no detectable face returns a friendly 422. In the `clip` space it embeds the whole image. The detector/crop differ from the pipeline's (YuNet vs buffalo_l) but produce near-identical CLIP embeddings (verified crop-parity ~0.99), since CLIP is framing-robust.
+- `/search` takes a `limit` (capped at `MAX_RESULTS`) powering the "Show more" button: each click re-requests with a larger limit and re-renders the re-ranked list (`results.html`). `SimilarityIndex.search_by_vector` drops results within `settings.dedup_similarity_threshold` (0.98) cosine of one already shown — collapsing duplicate TMDB person entries, well above real lookalike scores (~0.94). Upload-path pagination isn't wired yet (would need the query vector persisted).
 
 ## Conventions
 

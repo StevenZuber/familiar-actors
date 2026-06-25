@@ -611,3 +611,30 @@ footer p {
     text-align: center;
     padding: 3rem;
 }
+
+/* Show more */
+.show-more-wrap {
+    text-align: center;
+    margin-top: 2rem;
+}
+
+.show-more {
+    padding: 0.7rem 2rem;
+    font-size: 0.95rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.show-more:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.show-more.htmx-request {
+    opacity: 0.6;
+    pointer-events: none;
+}
