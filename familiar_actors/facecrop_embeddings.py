@@ -18,7 +18,7 @@ from collections import Counter
 from typing import Any
 
 import numpy as np
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from familiar_actors.config import settings
@@ -175,16 +175,9 @@ def generate_facecrop_embedding(actor: Actor, session: Session) -> bool:
     return True
 
 
-def process_facecrop_embeddings(session: Session, limit: int | None = None) -> int:
-    """Generate face-crop embeddings + gender/age for every actor that needs it.
-
-    Targets actors with a headshot that either lack a facecrop_embedding_path
-    or lack a gender estimate (so actors embedded before genderage was added
-    get backfilled without recomputing their embedding). Skips actors already
-    flagged face_unavailable. Safe to interrupt and resume — committed per
-    actor. `limit` caps the batch (for validation).
-    """
-    query = select(Actor).where(
+def _needs_processing():
+    """WHERE clause for actors needing a facecrop embedding and/or gender/age."""
+    return (
         Actor.image_path.isnot(None),  # type: ignore[union-attr]
         Actor.face_unavailable.is_(False),  # type: ignore[union-attr]
         or_(
@@ -192,28 +185,58 @@ def process_facecrop_embeddings(session: Session, limit: int | None = None) -> i
             Actor.gender.is_(None),  # type: ignore[union-attr]
         ),
     )
-    if limit is not None:
-        query = query.limit(limit)
-    actors = session.exec(query).all()
 
-    if not actors:
+
+def process_facecrop_embeddings(
+    session: Session, limit: int | None = None, batch_size: int = 200
+) -> int:
+    """Generate face-crop embeddings + gender/age for every actor that needs it.
+
+    Targets actors with a headshot that either lack a facecrop_embedding_path
+    or lack a gender estimate (so actors embedded before genderage was added
+    get backfilled without recomputing their embedding). Skips actors already
+    flagged face_unavailable. Safe to interrupt and resume — committed per
+    actor.
+
+    Processes in bounded batches (re-querying "still needs processing" each
+    round, since a processed actor no longer matches) so memory stays flat over
+    a 406k-row run rather than loading every actor up front. `limit` caps total
+    actors processed (for validation).
+    """
+    settings.facecrop_embeddings_dir.mkdir(parents=True, exist_ok=True)
+
+    total = session.exec(
+        select(func.count()).select_from(Actor).where(*_needs_processing())
+    ).one()
+    if not total:
         logger.info("No actors need face-crop processing")
         return 0
 
-    settings.facecrop_embeddings_dir.mkdir(parents=True, exist_ok=True)
     processed = 0
     no_face = 0
+    seen = 0
+    while limit is None or seen < limit:
+        take = batch_size if limit is None else min(batch_size, limit - seen)
+        batch = session.exec(
+            select(Actor).where(*_needs_processing()).limit(take)
+        ).all()
+        if not batch:
+            break
 
-    for i, actor in enumerate(actors):
-        if generate_facecrop_embedding(actor, session):
-            processed += 1
-        else:
-            no_face += 1
-        if (i + 1) % 50 == 0:
-            logger.info(
-                f"Face-crop processing: {i + 1}/{len(actors)} "
-                f"({processed} done, {no_face} no-face)"
-            )
+        for actor in batch:
+            if generate_facecrop_embedding(actor, session):
+                processed += 1
+            else:
+                no_face += 1
+            seen += 1
+            if seen % 50 == 0:
+                logger.info(
+                    f"Face-crop processing: {seen}/{total} "
+                    f"({processed} done, {no_face} no-face)"
+                )
+
+        # Detach processed actors so the identity map doesn't grow all run.
+        session.expunge_all()
 
     logger.info(f"Processed {processed} actors ({no_face} no-face)")
     return processed
